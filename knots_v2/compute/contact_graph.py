@@ -6,6 +6,8 @@ o igual a la suma de sus radios más una tolerancia epsilon.
 
 from __future__ import annotations
 
+import math
+
 from ..domain.configuration import DiskConfiguration
 
 # Tolerancia para considerar dos discos en contacto (absorbe errores de punto flotante)
@@ -28,6 +30,12 @@ class ContactGraph:
     ) -> dict[int, list[int]]:
         """Calcula el grafo de contacto para *config*.
 
+        Dos discos i y j están en contacto cuando:
+            dist_euclidiana(center_i, center_j) <= radius_i + radius_j + epsilon
+
+        Se usa math.hypot para la distancia euclídea entre centros, evitando
+        cualquier ambigüedad respecto a distancia al cuadrado u otras variantes.
+
         Args:
             config: Configuración de discos sobre la que operar.
             epsilon: Tolerancia adicional para la detección de contacto.
@@ -41,7 +49,10 @@ class ContactGraph:
 
         for i in range(n):
             for j in range(i + 1, n):
-                dist = disks[i].center.distance_to(disks[j].center)
+                # Distancia euclídea real entre centros (no al cuadrado)
+                dx = disks[i].center.x - disks[j].center.x
+                dy = disks[i].center.y - disks[j].center.y
+                dist = math.hypot(dx, dy)
                 umbral = disks[i].radius + disks[j].radius + epsilon
                 if dist <= umbral:
                     graph[i].append(j)

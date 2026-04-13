@@ -27,10 +27,21 @@ class SVGExporter:
     """
 
     # Padding alrededor del contenido en unidades de usuario
-    _PADDING: float = 5.0
+    _PADDING: float = 20.0
+    # Dimensiones físicas fijas del SVG en píxeles.
+    # El viewBox se ajusta al contenido real; width/height controlan el tamaño
+    # de renderizado. Usar unidades de usuario como píxeles producía SVGs de
+    # 20-30px que requerían zoom extremo para visualizarse.
+    _WIDTH_PX: int = 800
+    _HEIGHT_PX: int = 600
 
     def export(self, config: DiskConfiguration, results: dict[str, Any]) -> str:
         """Genera el SVG completo como string.
+
+        El viewBox se calcula a partir del bounding box real de todos los discos
+        más un padding de 20 unidades. El SVG se renderiza siempre a 800×600px
+        independientemente de las dimensiones del contenido: el navegador/visor
+        escala el viewBox para ocupar el espacio disponible.
 
         Args:
             config: Configuración de discos a visualizar.
@@ -41,13 +52,12 @@ class SVGExporter:
             SVG como string UTF-8.
         """
         disks = list(config)
-        vb = self._viewbox(config)
-        min_x, min_y, width, height = vb
+        min_x, min_y, vb_width, vb_height = self._viewbox(config)
 
         lines: list[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg"'
-            f' viewBox="{min_x:.3f} {min_y:.3f} {width:.3f} {height:.3f}"'
-            f' width="{width:.0f}" height="{height:.0f}">',
+            f' viewBox="{min_x:.3f} {min_y:.3f} {vb_width:.3f} {vb_height:.3f}"'
+            f' width="{self._WIDTH_PX}" height="{self._HEIGHT_PX}">',
             "  <!-- Knots v2 — generado automáticamente -->",
         ]
 
