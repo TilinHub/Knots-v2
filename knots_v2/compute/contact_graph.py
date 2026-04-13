@@ -10,8 +10,10 @@ import math
 
 from ..domain.configuration import DiskConfiguration
 
-# Tolerancia para considerar dos discos en contacto (absorbe errores de punto flotante)
-_EPSILON: float = 1e-9
+# Tolerancia para considerar dos discos en contacto.
+# 0.1 cubre configuraciones donde los discos están visualmente próximos
+# pero no exactamente tangentes debido a la representación discreta.
+_EPSILON: float = 0.1
 
 
 class ContactGraph:

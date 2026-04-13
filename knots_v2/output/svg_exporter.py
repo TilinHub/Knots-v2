@@ -26,12 +26,12 @@ class SVGExporter:
         Path("salida.svg").write_text(svg_str)
     """
 
-    # Padding alrededor del contenido en unidades de usuario
-    _PADDING: float = 20.0
+    # Padding alrededor del contenido en unidades de usuario.
+    # 2 unidades es suficiente para que los discos del borde no queden cortados.
+    _PADDING: float = 2.0
     # Dimensiones físicas fijas del SVG en píxeles.
     # El viewBox se ajusta al contenido real; width/height controlan el tamaño
-    # de renderizado. Usar unidades de usuario como píxeles producía SVGs de
-    # 20-30px que requerían zoom extremo para visualizarse.
+    # de renderizado. El visor SVG escala el viewBox para llenar estos píxeles.
     _WIDTH_PX: int = 800
     _HEIGHT_PX: int = 600
 
@@ -93,27 +93,24 @@ class SVGExporter:
     def _render_envelope(self, envelope: list[dict]) -> list[str]:
         if len(envelope) < 2:
             return []
+        # <polygon> cierra el contorno automáticamente; no se repite el primer punto
         pts_str = " ".join(f"{p['x']:.4f},{p['y']:.4f}" for p in envelope)
-        # Cerramos el polígono repitiendo el primer punto
-        first = envelope[0]
-        pts_str += f" {first['x']:.4f},{first['y']:.4f}"
         return [
             "  <!-- Envolvente exterior -->",
-            f'  <polyline points="{pts_str}"'
-            f' fill="none" stroke="#e74c3c" stroke-width="0.8"'
+            f'  <polygon points="{pts_str}"'
+            f' fill="rgba(231,76,60,0.08)" stroke="#e74c3c" stroke-width="0.3"'
             f' stroke-linejoin="round"/>',
         ]
 
     def _render_hull(self, hull: list[dict]) -> list[str]:
         if len(hull) < 2:
             return []
+        # <polygon> cierra el contorno automáticamente; no se repite el primer punto
         pts_str = " ".join(f"{p['x']:.4f},{p['y']:.4f}" for p in hull)
-        first = hull[0]
-        pts_str += f" {first['x']:.4f},{first['y']:.4f}"
         return [
             "  <!-- Convex hull -->",
-            f'  <polyline points="{pts_str}"'
-            f' fill="none" stroke="#e67e22" stroke-width="0.5"'
+            f'  <polygon points="{pts_str}"'
+            f' fill="none" stroke="#e67e22" stroke-width="0.3"'
             f' stroke-dasharray="3,2" opacity="0.7"/>',
         ]
 
