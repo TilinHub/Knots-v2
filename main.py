@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import sys
 
 from knots_v2.domain.configuration import DiskConfiguration
 from knots_v2.domain.disk import Disk
@@ -119,7 +120,7 @@ def main() -> None:
         svg_path = Path("output.svg")
         svg_content = SVGExporter().export(config, all_results[0])
         svg_path.write_text(svg_content, encoding="utf-8")
-        print(f"\n  SVG exportado → {svg_path.resolve()}")
+        print(f"\n  SVG exportado -> {svg_path.resolve()}")
 
     # ------------------------------------------------------------------
     # 6. Serializar todos los resultados a JSON
@@ -127,9 +128,20 @@ def main() -> None:
     json_path = Path("output.json")
     serializer = JSONSerializer()
     json_path.write_text(serializer.serialize(all_results), encoding="utf-8")
-    print(f"  JSON guardado  → {json_path.resolve()}")
+    print(f"  JSON guardado  -> {json_path.resolve()}")
     print("=" * 55 + "\n")
 
+    # ------------------------------------------------------------------
+    # 7. Iniciar Interfaz Gráfica (GUI)
+    # ------------------------------------------------------------------
+    if "--cli-only" not in sys.argv:
+        print("\n  Iniciando Interfaz Gráfica...")
+        try:
+            from knots_v2.gui import KnotsApp
+            app = KnotsApp()
+            app.mainloop()
+        except ImportError as e:
+            print(f"No se pudo cargar la GUI: {e}")
 
 if __name__ == "__main__":
     main()
