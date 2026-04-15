@@ -148,7 +148,7 @@ class KnotsApp(tk.Tk):
         
         self._build_ui()
         self._update_envelope_task()
-        self.after(50, self._check_results)
+        self.after(15, self._check_results)
 
     def _build_ui(self):
         self.top_frame = ttk.Frame(self, padding=15)
@@ -222,6 +222,7 @@ class KnotsApp(tk.Tk):
         ))
 
     def _check_results(self):
+        needs_redraw = False
         try:
             while not self.result_queue.empty():
                 res = self.result_queue.get_nowait()
@@ -237,9 +238,13 @@ class KnotsApp(tk.Tk):
                 self.lbl_measure.config(
                     text=f"Medida: {arcos_str}π + {rectas:.2f}  (Total: {total:.4f} u)"
                 )
-                self._redraw()
+                needs_redraw = True
         except queue.Empty: pass
-        finally: self.after(50, self._check_results)
+        
+        if needs_redraw:
+            self._redraw()
+            
+        self.after(15, self._check_results)
 
     def _redraw(self):
         self.canvas.delete("all")
