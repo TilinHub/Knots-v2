@@ -53,20 +53,22 @@ class EnvelopeWorker(threading.Thread):
                 elif n == 2:
                     dist = math.hypot(route_points[1].x - route_points[0].x, route_points[1].y - route_points[0].y)
                     measure = 2 * dist + 2 * math.pi * radius
-                    dx = (route_points[1].x - route_points[0].x) / dist
-                    dy = (route_points[1].y - route_points[0].y) / dist
+                    if dist < 1e-9:
+                        dx, dy = 1.0, 0.0
+                    else:
+                        dx, dy = (route_points[1].x - route_points[0].x) / dist, (route_points[1].y - route_points[0].y) / dist
                     nx, ny = dy, -dx
                     
                     envelope_contour.append((route_points[0].x + radius*nx, route_points[0].y + radius*ny))
                     envelope_contour.append((route_points[1].x + radius*nx, route_points[1].y + radius*ny))
                     for i in range(1, 20):
-                        ang = math.atan2(ny, nx) - math.pi * i / 20
+                        ang = math.atan2(ny, nx) + math.pi * i / 20
                         envelope_contour.append((route_points[1].x + radius * math.cos(ang), route_points[1].y + radius * math.sin(ang)))
                     
                     envelope_contour.append((route_points[1].x - radius*nx, route_points[1].y - radius*ny))
                     envelope_contour.append((route_points[0].x - radius*nx, route_points[0].y - radius*ny))
                     for i in range(1, 20):
-                        ang = math.atan2(-ny, -nx) - math.pi * i / 20
+                        ang = math.atan2(-ny, -nx) + math.pi * i / 20
                         envelope_contour.append((route_points[0].x + radius * math.cos(ang), route_points[0].y + radius * math.sin(ang)))
                 else:
                     perimeter = 0.0
@@ -95,19 +97,19 @@ class EnvelopeWorker(threading.Thread):
                         a_start = math.atan2(n_prev[1], n_prev[0])
                         a_end = math.atan2(n_cur[1], n_cur[0])
                         
-                        ang_diff = (a_start - a_end) % (2 * math.pi)
+                        ang_diff = (a_end - a_start) % (2 * math.pi)
                         
-                        # Si es paralela pero distinto sentido (0 o 2pi) lo manejamos como círculo
                         if ang_diff < 1e-9: 
                             pass 
 
                         measure += radius * ang_diff
                             
-                        # Arc creation for point $p$ CW between planes 
+                        # Arc creation for point p CCW to wrap the outside
                         steps = max(5, int(30 * ang_diff / (2 * math.pi)))
-                        for j in range(steps + 1):
-                            ang = a_start - ang_diff * (j / steps)
-                            envelope_contour.append((p.x + radius * math.cos(ang), p.y + radius * math.sin(ang)))
+                        if steps > 0:
+                            for j in range(steps + 1):
+                                ang = a_start + ang_diff * (j / steps)
+                                envelope_contour.append((p.x + radius * math.cos(ang), p.y + radius * math.sin(ang)))
                             
                 self.result_queue.put({"envelope": envelope_contour, "measure": measure})
                 
