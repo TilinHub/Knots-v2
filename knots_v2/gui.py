@@ -27,7 +27,7 @@ class EnvelopeWorker(threading.Thread):
                 
                 centers, radius, custom_seq = task
                 if not centers:
-                    self.result_queue.put({"envelope": [], "measure": 0.0})
+                    self.result_queue.put({"envelope": [], "rectas": 0.0, "arcos_pi": 0.0})
                     continue
                 
                 # Definir Puntos y Orden
@@ -39,20 +39,22 @@ class EnvelopeWorker(threading.Thread):
                     route_points = self.hull_computer._graham_scan(centers)
                 
                 envelope_contour = []
-                measure = 0.0
+                rectas = 0.0
+                arcos_pi = 0.0
 
                 n = len(route_points)
                 if n == 0:
                     pass
                 elif n == 1:
-                    measure = 2 * math.pi * radius
+                    arcos_pi = 2.0 * radius
                     cx, cy = route_points[0].x, route_points[0].y
                     for i in range(40):
                         ang = 2 * math.pi * i / 40
                         envelope_contour.append((cx + radius * math.cos(ang), cy + radius * math.sin(ang)))
                 elif n == 2:
                     dist = math.hypot(route_points[1].x - route_points[0].x, route_points[1].y - route_points[0].y)
-                    measure = 2 * dist + 2 * math.pi * radius
+                    rectas = 2.0 * dist
+                    arcos_pi = 2.0 * radius
                     if dist < 1e-9:
                         dx, dy = 1.0, 0.0
                     else:
@@ -87,7 +89,7 @@ class EnvelopeWorker(threading.Thread):
                             nx, ny = dy/dist, -dx/dist
                         normals.append((nx, ny))
                     
-                    measure = perimeter
+                    rectas = perimeter
                     
                     for i in range(n):
                         p = route_points[i]
@@ -102,7 +104,7 @@ class EnvelopeWorker(threading.Thread):
                         if ang_diff < 1e-9: 
                             pass 
 
-                        measure += radius * ang_diff
+                        arcos_pi += (radius * ang_diff) / math.pi
                             
                         # Arc creation for point p CCW to wrap the outside
                         steps = max(5, int(30 * ang_diff / (2 * math.pi)))
@@ -111,7 +113,7 @@ class EnvelopeWorker(threading.Thread):
                                 ang = a_start + ang_diff * (j / steps)
                                 envelope_contour.append((p.x + radius * math.cos(ang), p.y + radius * math.sin(ang)))
                             
-                self.result_queue.put({"envelope": envelope_contour, "measure": measure})
+                self.result_queue.put({"envelope": envelope_contour, "rectas": rectas, "arcos_pi": arcos_pi})
                 
             except Exception as e:
                 print(f"Error en Worker de Envolvente: {e}")
@@ -160,11 +162,12 @@ class KnotsApp(tk.Tk):
         tools_frame = ttk.Frame(self.top_frame)
         tools_frame.pack(side=tk.RIGHT)
 
-        ttk.Radiobutton(tools_frame, text="Mover (Arrastrar / Doble Click: Añadir)", variable=self.mode, value="move").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(tools_frame, text="Mover (Arrastrar / Doble Click)", variable=self.mode, value="move").pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(tools_frame, text="Delinear Envolvente", variable=self.mode, value="draw").pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(tools_frame, text="Borrar Disco", variable=self.mode, value="delete").pack(side=tk.LEFT, padx=5)
         
         ttk.Separator(tools_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, padx=10, fill=tk.Y)
+        ttk.Button(tools_frame, text="Añadir Disco", command=self._add_disk_btn).pack(side=tk.LEFT, padx=4)
         ttk.Button(tools_frame, text="Borrar Recorrido", command=self._clear_sequence).pack(side=tk.LEFT, padx=4)
         ttk.Checkbutton(tools_frame, text="Ver Envolvente", variable=self.show_envelope, command=self._redraw).pack(side=tk.LEFT, padx=5)
 
@@ -223,7 +226,17 @@ class KnotsApp(tk.Tk):
             while not self.result_queue.empty():
                 res = self.result_queue.get_nowait()
                 self.current_envelope = res["envelope"]
-                self.lbl_measure.config(text=f"Medida de la envolvente: {res['measure']:.4f}")
+                
+                rectas = res["rectas"]
+                arcos_pi = res["arcos_pi"]
+                total = rectas + arcos_pi * math.pi
+                
+                # Fomatear a string sin decimales si es entero, ej 4.0 -> 4
+                arcos_str = f"{arcos_pi:g}"
+                
+                self.lbl_measure.config(
+                    text=f"Medida: {arcos_str}π + {rectas:.2f}  (Total: {total:.4f} u)"
+                )
                 self._redraw()
         except queue.Empty: pass
         finally: self.after(50, self._check_results)
@@ -321,6 +334,28 @@ class KnotsApp(tk.Tk):
 
     def _on_release(self, event):
         self.dragged_disk_idx = None
+
+    def _add_disk_btn(self):
+        w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+        import random
+        if w > 1:
+            mx, my = self.screen_to_math(w/2 + random.uniform(-20, 20), h/2 + random.uniform(-20, 20))
+        else:
+            mx, my = 0.0, 0.0
+            
+        # Evitar posición exacta ocupada empujando un poco
+        for _ in range(10):
+            overlap = False
+            for p in self.disks:
+                if math.hypot(p.x - mx, p.y - my) < 2.0 * self.r_math:
+                    overlap = True
+                    mx += self.r_math * 2.0
+            if not overlap:
+                break
+                
+        self.disks.append(Point(mx, my))
+        self._update_envelope_task()
+        self._redraw()
 
     def _on_double_click(self, event):
         if self.mode.get() == "move" or self.mode.get() == "draw":
