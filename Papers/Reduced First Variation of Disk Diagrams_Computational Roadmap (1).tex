@@ -1,0 +1,544 @@
+%\documentclass[12pt]{amsart}
+\documentclass[12pt,letterpaper]{amsart}
+
+%\documentclass{article}
+\usepackage{tikz}
+\usepackage{tikz-cd}
+\usepackage{geometry}
+\usetikzlibrary{mindmap,trees}
+\usepackage{eucal}
+
+% -------------------- FONT AND MATH PACKAGES --------------------
+\usepackage[T1]{fontenc}  % Proper font encoding
+\usepackage[utf8]{inputenc}  % UTF-8 encoding (only needed for legacy TeX engines)
+\usepackage{lmodern}  % Better scalable fonts
+\usepackage{amsmath, amssymb, amsfonts, amscd}  % Standard AMS packages
+
+% -------------------- GRAPHICS AND FIGURES --------------------
+\usepackage{graphicx}  % Image support
+\usepackage{xcolor}  % Color support
+\usepackage{subcaption}
+\usepackage{booktabs} % Modern subfigures (avoid deprecated subfigure package)
+% \usepackage{subfigure}  % DEPRECATED, REMOVE THIS
+\usepackage[all]{xy}  % Xy-pic for diagrams
+
+% -------------------- GEOMETRY AND PAGE SETUP --------------------
+\geometry{
+  paper=letterpaper,
+  left=25mm,
+  right=25mm,
+  top=25mm,
+  bottom=30mm,
+  footskip=15mm
+}
+
+% -------------------- THEOREM ENVIRONMENTS --------------------
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{observation}[theorem]{Observation}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{algorithm}[theorem]{Algorithm}
+\newtheorem{xca}[theorem]{Exercise}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% -------------------- OPERATORS --------------------
+\DeclareMathOperator{\Per}{Per}
+\DeclareMathOperator{\Area}{Area}
+\newcommand{\Roll}{\text{\rm \bf Roll}}
+\newcommand{\Len}{\text{\rm \bf Len}}
+\newcommand{\Rad}{\text{\rm \bf Rad}}
+\newcommand{\Hess}{\text{\rm \bf Hess}}
+\newcommand{\R}{{\mathbb{R}}}
+\newcommand\Bigger[2][7]{\left#2\rule{0mm}{#1truemm}\right.}
+\newcommand{\Iso}{\text{\rm Iso}}
+\newcommand{\Flex}{\text{\rm \bf Flex}}
+%\newcommand{\Rad}{\text{\bf Rad}}
+\newcommand{\rank}{\text{\rm rank}}
+\newcommand{\conv}{\text{\rm conv}}
+
+\begin{document}
+
+\title{Reduced Gauge-Free Method for cs--Diagrams (R=1): Rolling Matrix, First Variation, and Criticality}
+\author{Notes for Tomas}
+\date{}
+\maketitle
+
+%=========================================================
+\section{Goal and standing conventions}
+%=========================================================
+
+Throughout, disks have radius $R=1$.
+We work at a fixed directed cs--type $\gamma$ and a fixed disk--disk contact stratum.
+All first order objects below are linear in the unknown centre variation $\delta{\bf c}$.
+
+We use the $90^\circ$ rotation $J(x,y)=(-y,x)$, and for any ${\bf v}\in\R^2$ we write ${\bf v}^\perp:=J{\bf v}$.
+
+%=========================================================
+\section{Data of a directed cs--diagram}
+%=========================================================
+
+\subsection{Geometric and combinatorial data}
+
+Fix $N\ge 1$ unit disks $D_1,\dots,D_N\subset\R^2$ with centres ${\bf c}_i\in\R^2$.
+
+Fix a directed cs--diagram type $\gamma$ with:
+(1) a finite tangency label set $\mathcal T$ with $|\mathcal T|=M$,
+(2) a disk assignment $k:\mathcal T\to\{1,\dots,N\}$,
+(3) tangency points ${\bf p}_\alpha\in\partial D_{k(\alpha)}$ for all $\alpha\in\mathcal T$,
+(4) a directed segment list $\mathcal S$ of ordered pairs $s:\alpha\to\beta$,
+(5) a directed arc list $\mathcal A$ of ordered triples $a=(\alpha\to\beta,k)$ with ${\bf p}_\alpha,{\bf p}_\beta\in\partial D_k$.
+
+Define for each $\alpha\in\mathcal T$ the unit normal ${\bf n}_\alpha:={\bf p}_\alpha-{\bf c}_{k(\alpha)}$ so $\|{\bf n}_\alpha\|=1$.
+
+\subsection{One-cycle and $C^1$ structure}
+
+Assume:
+(CYCLE) each $\alpha\in\mathcal T$ occurs exactly once as the initial label of a piece and exactly once as the terminal label of a piece.
+(C1) travel-direction tangents match at each junction (incoming equals outgoing).
+
+\subsection{Travel-direction tangents at junctions}
+
+For each $\alpha\in\mathcal T$, define the travel-direction unit tangent ${\bf t}_\alpha$ as the outgoing tangent:
+if the outgoing piece is a segment $s:\alpha\to\beta$, set ${\bf v}_s:={\bf p}_\beta-{\bf p}_\alpha$ and ${\bf t}_\alpha:={\bf v}_s/\|{\bf v}_s\|$;
+if the outgoing piece is an arc on $\partial D_{k(\alpha)}$, choose ${\bf t}_\alpha\in\{\pm {\bf n}_\alpha^\perp\}$ to point along the arc in the direction of travel.
+
+%=========================================================
+\section{Contact stratum and the rolling matrix $A(c)$}
+%=========================================================
+
+\subsection{Contact set}
+
+Fix a set of imposed disk--disk contacts $\mathcal E\subset\{\{i,j\}:1\le i<j\le N\}$ such that for each $\{i,j\}\in\mathcal E$ we have $\|{\bf c}_i-{\bf c}_j\|=2$ on the stratum.
+
+\subsection{Rolling constraints}
+
+For each $\{i,j\}\in\mathcal E$ define ${\bf u}_{ij}:=({\bf c}_i-{\bf c}_j)/\|{\bf c}_i-{\bf c}_j\|\in\R^2$.
+The linearised contact constraint is $\langle {\bf u}_{ij},\delta{\bf c}_i-\delta{\bf c}_j\rangle=0$.
+
+\subsection{Matrix $A(c)$ and rolling space}
+
+Order the centre velocity vector as $\delta{\bf c}=(\delta{\bf c}_1,\dots,\delta{\bf c}_N)\in\R^{2N}$ with blocks $\delta{\bf c}_i\in\R^2$.
+Define $A(c)\in\R^{|\mathcal E|\times 2N}$ row-by-row:
+the row for $\{i,j\}$ has block ${\bf u}_{ij}^\mathsf T$ in the columns of disk $i$, block $-{\bf u}_{ij}^\mathsf T$ in the columns of disk $j$, and zeros elsewhere.
+Define
+\[
+\Roll(c):=\ker A(c)\subset\R^{2N}.
+\]
+
+%=========================================================
+\section{First variation: reduced segment-only functional}
+%=========================================================
+
+\subsection{Segment data}
+
+For each segment $s:\alpha\to\beta\in\mathcal S$ define
+\[
+{\bf v}_s:={\bf p}_\beta-{\bf p}_\alpha,\qquad \ell_s:=\|{\bf v}_s\|,\qquad \hat{\bf v}_s:=\frac{{\bf v}_s}{\ell_s}.
+\]
+
+\subsection{Reduced first variation functional}
+
+Define the reduced first variation functional on centre velocities by
+\[
+\Phi_{\rm seg}(\delta{\bf c}):=\sum_{s:\alpha\to\beta\in\mathcal S}\Big\langle \hat{\bf v}_s,\delta{\bf c}_{k(\beta)}-\delta{\bf c}_{k(\alpha)}\Big\rangle.
+\]
+
+\begin{theorem}[Gauge-free reduced first variation on the rolling space]
+Assume (CYCLE) and (C1). For every $\delta{\bf c}\in\Roll(c)$, the first variation of the cs--diagram length within the fixed directed cs--type and contact stratum equals
+\[
+D\Len(\gamma)[\delta{\bf c}]=\Phi_{\rm seg}(\delta{\bf c}).
+\]
+In particular, arcs contribute no net first order term after reduction to admissible variations within the fixed cs--type.
+\end{theorem}
+
+%=========================================================
+\section{Linear form representation and deterministic assembly}
+%=========================================================
+
+\subsection{Reduced gradient vector ${\bf g}_{\rm red}$}
+
+There exists a vector ${\bf g}_{\rm red}\in\R^{2N}$ such that
+\[
+\Phi_{\rm seg}(\delta{\bf c})={\bf g}_{\rm red}^\mathsf T\,\delta{\bf c}
+\qquad
+\text{for all }\delta{\bf c}\in\R^{2N}.
+\]
+
+\subsection{Deterministic assembly of ${\bf g}_{\rm red}$}
+
+Initialize ${\bf g}_{\rm red}=0\in\R^{2N}$.
+
+For each segment $s:\alpha\to\beta\in\mathcal S$:
+\begin{itemize}
+\item Compute $\hat{\bf v}_s=({\bf p}_\beta-{\bf p}_\alpha)/\|{\bf p}_\beta-{\bf p}_\alpha\|$.
+\item Add $-\hat{\bf v}_s$ to the block of ${\bf g}_{\rm red}$ corresponding to disk $k(\alpha)$.
+\item Add $+\hat{\bf v}_s$ to the block of ${\bf g}_{\rm red}$ corresponding to disk $k(\beta)$.
+\end{itemize}
+
+Then $\Phi_{\rm seg}(\delta{\bf c})={\bf g}_{\rm red}^\mathsf T\delta{\bf c}$.
+
+%=========================================================
+\section{Criticality tests as linear algebra}
+%=========================================================
+
+\subsection{Definition}
+
+The diagram is stationary within the fixed directed cs--type and contact stratum if and only if
+\[
+\Phi_{\rm seg}(\delta{\bf c})=0
+\qquad
+\text{for all }\delta{\bf c}\in\Roll(c).
+\]
+
+\subsection{Kernel-basis test}
+
+Let $K$ be a matrix whose columns form a basis of $\Roll(c)=\ker A(c)$.
+Then stationarity is equivalent to
+\[
+{\bf g}_{\rm red}^\mathsf T K=0.
+\]
+
+\subsection{Row-space test}
+
+Stationarity is equivalent to the existence of a multiplier vector $\lambda$ such that
+\[
+{\bf g}_{\rm red}=A(c)^\mathsf T\lambda.
+\]
+
+%=========================================================
+\section{Safe quadratic test for linearised stability (optional)}
+%=========================================================
+
+For each segment $s:\alpha\to\beta\in\mathcal S$ define the projector $P_s:=I-\hat{\bf v}_s\hat{\bf v}_s^\mathsf T$.
+Define the quadratic form on centre velocities by
+\[
+Q_s(\delta{\bf c}):=\frac{\|P_s(\delta{\bf c}_{k(\beta)}-\delta{\bf c}_{k(\alpha)})\|^2}{\ell_s},
+\qquad
+Q_{\rm red}(\delta{\bf c}):=\sum_{s\in\mathcal S}Q_s(\delta{\bf c}),
+\]
+and restrict to the rolling space $\Roll(c)$.
+
+%============================================================
+\section{Legend of notation and data flow (inputs, computed objects, unknowns, outputs)}
+%============================================================
+
+\subsection{A. Independent inputs (you must provide these)}
+
+\subsubsection*{A1. Disk geometry (input)}
+\begin{itemize}
+\item $N$ and the centres ${\bf c}_1,\dots,{\bf c}_N\in\R^2$.
+\end{itemize}
+
+\subsubsection*{A2. Contact stratum (input)}
+\begin{itemize}
+\item $\mathcal E\subset\{\{i,j\}:1\le i<j\le N\}$.
+\item Validity check: $\|{\bf c}_i-{\bf c}_j\|=2$ for each $\{i,j\}\in\mathcal E$.
+\end{itemize}
+
+\subsubsection*{A3. Directed cs--type (input combinatorics)}
+\begin{itemize}
+\item $\mathcal T$ with $|\mathcal T|=M$.
+\item $k:\mathcal T\to\{1,\dots,N\}$.
+\item ${\bf p}_\alpha\in\partial D_{k(\alpha)}$ for all $\alpha\in\mathcal T$.
+\item $\mathcal S$ (directed segments $s:\alpha\to\beta$).
+\item $\mathcal A$ (directed arcs $a=(\alpha\to\beta,k)$).
+\end{itemize}
+
+\subsubsection*{A4. Structural assumptions (checks on the input)}
+\begin{itemize}
+\item (CYCLE) Each label appears exactly once as start and once as end of a piece.
+\item (C1) Incoming and outgoing travel-direction tangents match at each label.
+\end{itemize}
+
+\subsection{B. Unknown variables}
+
+\subsubsection*{B1. Centre variations (unknown)}
+\[
+\delta{\bf c}=(\delta{\bf c}_1,\dots,\delta{\bf c}_N)\in\R^{2N},
+\qquad
+\delta{\bf c}_i\in\R^2.
+\]
+
+\subsection{C. Computed objects}
+
+\subsubsection*{C1. Rolling matrix and rolling space}
+\[
+A(c)\in\R^{|\mathcal E|\times 2N},
+\qquad
+\Roll(c)=\ker A(c).
+\]
+
+\subsubsection*{C2. Segment directions}
+For $s:\alpha\to\beta\in\mathcal S$:
+\[
+{\bf v}_s={\bf p}_\beta-{\bf p}_\alpha,\qquad \ell_s=\|{\bf v}_s\|,\qquad \hat{\bf v}_s={\bf v}_s/\ell_s.
+\]
+
+\subsubsection*{C3. Reduced gradient vector}
+Assemble ${\bf g}_{\rm red}\in\R^{2N}$ by segment updates:
+\[
+{\bf g}_{\rm red}|_{k(\alpha)}\gets {\bf g}_{\rm red}|_{k(\alpha)}-\hat{\bf v}_s,
+\qquad
+{\bf g}_{\rm red}|_{k(\beta)}\gets {\bf g}_{\rm red}|_{k(\beta)}+\hat{\bf v}_s.
+\]
+
+\subsection{D. Outputs and tests}
+
+\subsubsection*{D1. Reduced first variation}
+\[
+\Phi_{\rm seg}(\delta{\bf c})={\bf g}_{\rm red}^\mathsf T\delta{\bf c}
+=\sum_{s:\alpha\to\beta\in\mathcal S}\langle \hat{\bf v}_s,\delta{\bf c}_{k(\beta)}-\delta{\bf c}_{k(\alpha)}\rangle.
+\]
+
+\subsubsection*{D2. Stationarity test on the rolling space}
+Equivalent tests:
+\[
+\Phi_{\rm seg}(\delta{\bf c})=0\ \ \forall\,\delta{\bf c}\in\Roll(c),
+\qquad
+{\bf g}_{\rm red}^\mathsf T K=0\ \text{ for a basis matrix }K\text{ of }\ker A(c),
+\qquad
+{\bf g}_{\rm red}=A(c)^\mathsf T\lambda\ \text{ for some }\lambda.
+\]
+
+%============================================================
+%  EXAMPLES (N=2 and N=3): INPUT DATA AND MATRIX CONSTRUCTION
+%  REDUCED GAUGE-FREE METHOD (R=1)
+%  NO NEW COMMANDS; VECTORS IN \bf
+%============================================================
+
+%============================================================
+\section{Examples: building $A(c)$ and ${\bf g}_{\rm red}$}
+%============================================================
+
+%============================================================
+\subsection{0. What data are required (input checklist)}
+%============================================================
+
+For a fixed directed cs--type and a fixed disk--disk contact stratum, the reduced method requires:
+\begin{itemize}
+\item Disk centres ${\bf c}_1,\dots,{\bf c}_N$.
+\item Contact set $\mathcal E$ (to build $A(c)$).
+\item Tangency points ${\bf p}_\alpha$ and the directed segment list $\mathcal S$ with disk assignment $k(\cdot)$ (to build ${\bf g}_{\rm red}$).
+\end{itemize}
+
+%============================================================
+\subsection{1. Example (N=2): two-disk stadium cs--diagram}
+%============================================================
+
+\subsubsection*{1.1 Inputs}
+
+\paragraph{Disk geometry.}
+Let $N=2$ and
+\[
+{\bf c}_1=(0,0),\qquad {\bf c}_2=(2,0).
+\]
+
+\paragraph{Contact stratum.}
+Let
+\[
+\mathcal E=\{\{1,2\}\}.
+\]
+Check: $\|{\bf c}_1-{\bf c}_2\|=2$.
+
+\paragraph{Directed cs--type.}
+Let
+\[
+\mathcal T=\{\alpha,\beta,\gamma,\delta\}.
+\]
+Disk assignment:
+\[
+k(\alpha)=k(\beta)=1,\qquad k(\gamma)=k(\delta)=2.
+\]
+Tangency points:
+\[
+{\bf p}_\alpha=(0,1),\quad {\bf p}_\beta=(0,-1),\quad
+{\bf p}_\gamma=(2,1),\quad {\bf p}_\delta=(2,-1).
+\]
+Directed segment list:
+\[
+\mathcal S=\{\alpha\to\gamma,\ \delta\to\beta\}.
+\]
+Directed arc list (not used by the reduced method):
+\[
+\mathcal A=\{(\gamma\to\delta,2),\ (\beta\to\alpha,1)\}.
+\]
+
+\subsubsection*{1.2 Unknowns}
+
+Use the ordering
+\[
+\delta{\bf c}=(x_1,y_1,x_2,y_2).
+\]
+
+\subsubsection*{1.3 Build $A(c)$ from $\mathcal E$}
+
+Compute
+\[
+{\bf u}_{12}=\frac{{\bf c}_1-{\bf c}_2}{\|{\bf c}_1-{\bf c}_2\|}
+=\frac{(-2,0)}{2}=(-1,0).
+\]
+Thus
+\[
+A(c)=\begin{pmatrix} {\bf u}_{12}^\mathsf T & -{\bf u}_{12}^\mathsf T \end{pmatrix}
+=\begin{pmatrix} -1 & 0 & 1 & 0 \end{pmatrix},
+\qquad
+\Roll(c)=\ker A(c).
+\]
+
+\subsubsection*{1.4 Build ${\bf g}_{\rm red}$ from $\mathcal S$}
+
+For $s_1:\alpha\to\gamma$:
+\[
+{\bf v}_{s_1}={\bf p}_\gamma-{\bf p}_\alpha=(2,0),\qquad
+\ell_{s_1}=2,\qquad
+\hat{\bf v}_{s_1}=(1,0).
+\]
+For $s_2:\delta\to\beta$:
+\[
+{\bf v}_{s_2}={\bf p}_\beta-{\bf p}_\delta=(-2,0),\qquad
+\ell_{s_2}=2,\qquad
+\hat{\bf v}_{s_2}=(-1,0).
+\]
+
+Assemble ${\bf g}_{\rm red}$ in blocks (disk 1 then disk 2):
+\[
+{\bf g}_{\rm red}|_{1}\gets {\bf g}_{\rm red}|_{1}-\hat{\bf v}_{s_1},\quad
+{\bf g}_{\rm red}|_{2}\gets {\bf g}_{\rm red}|_{2}+\hat{\bf v}_{s_1},
+\]
+\[
+{\bf g}_{\rm red}|_{2}\gets {\bf g}_{\rm red}|_{2}-\hat{\bf v}_{s_2},\quad
+{\bf g}_{\rm red}|_{1}\gets {\bf g}_{\rm red}|_{1}+\hat{\bf v}_{s_2}.
+\]
+Hence
+\[
+{\bf g}_{\rm red}|_1=-(1,0)+(-1,0)=(-2,0),
+\qquad
+{\bf g}_{\rm red}|_2=(1,0)-(-1,0)=(2,0),
+\]
+so in the ordering $(x_1,y_1,x_2,y_2)$:
+\[
+{\bf g}_{\rm red}=(-2,0,2,0)^\mathsf T.
+\]
+
+%============================================================
+\subsection{2. Example (N=3): three-disk triangle outer cs--diagram}
+%============================================================
+
+\subsubsection*{2.1 Inputs}
+
+\paragraph{Disk geometry.}
+Let $N=3$, $s=\sqrt{3}$, and
+\[
+{\bf c}_1=(0,0),\qquad {\bf c}_2=(3,0),\qquad {\bf c}_3=\left(\frac32,\frac{3s}{2}\right).
+\]
+
+\paragraph{Contact stratum.}
+For this example take
+\[
+\mathcal E=\varnothing,
+\]
+so $A(c)$ is empty (zero-row matrix) and $\Roll(c)=\R^{6}$.
+
+\paragraph{Directed cs--type.}
+Let
+\[
+\mathcal T=\{\alpha,\beta,\gamma,\delta,\varepsilon,\zeta\}.
+\]
+Assignment:
+\[
+k(\alpha)=k(\beta)=1,\quad k(\gamma)=k(\delta)=2,\quad k(\varepsilon)=k(\zeta)=3.
+\]
+Tangency points:
+\[
+{\bf p}_\alpha=(0,1),\qquad {\bf p}_\gamma=(3,1),
+\]
+\[
+{\bf p}_\beta=\left(\frac{s}{2},-\frac12\right),\qquad
+{\bf p}_\delta=\left(3-\frac{s}{2},-\frac12\right),
+\]
+\[
+{\bf p}_\varepsilon=\left(\frac32-\frac{s}{2},\frac{3s}{2}-\frac12\right),\qquad
+{\bf p}_\zeta=\left(\frac32+\frac{s}{2},\frac{3s}{2}-\frac12\right).
+\]
+Directed segment list:
+\[
+\mathcal S=\{\alpha\to\gamma,\ \delta\to\varepsilon,\ \zeta\to\beta\}.
+\]
+Directed arc list (not used by the reduced method):
+\[
+\mathcal A=\{(\gamma\to\delta,2),\ (\varepsilon\to\zeta,3),\ (\beta\to\alpha,1)\}.
+\]
+
+\subsubsection*{2.2 Unknowns}
+
+Use the ordering
+\[
+\delta{\bf c}=(x_1,y_1,x_2,y_2,x_3,y_3).
+\]
+
+\subsubsection*{2.3 Build $A(c)$ from $\mathcal E$}
+
+Since $\mathcal E=\varnothing$:
+\[
+A(c)\in\R^{0\times 6},
+\qquad
+\Roll(c)=\R^{6}.
+\]
+
+\subsubsection*{2.4 Build ${\bf g}_{\rm red}$ from $\mathcal S$}
+
+For $s_1:\alpha\to\gamma$:
+\[
+{\bf v}_{s_1}={\bf p}_\gamma-{\bf p}_\alpha=(3,0),\qquad
+\ell_{s_1}=3,\qquad
+\hat{\bf v}_{s_1}=(1,0).
+\]
+For $s_2:\delta\to\varepsilon$:
+\[
+{\bf v}_{s_2}={\bf p}_\varepsilon-{\bf p}_\delta=\left(-\frac32,\frac{3s}{2}\right),\qquad
+\ell_{s_2}=3,\qquad
+\hat{\bf v}_{s_2}=\left(-\frac12,\frac{s}{2}\right).
+\]
+For $s_3:\zeta\to\beta$:
+\[
+{\bf v}_{s_3}={\bf p}_\beta-{\bf p}_\zeta=\left(-\frac32,-\frac{3s}{2}\right),\qquad
+\ell_{s_3}=3,\qquad
+\hat{\bf v}_{s_3}=\left(-\frac12,-\frac{s}{2}\right).
+\]
+
+Assemble by segment updates in disk blocks:
+\[
+(\alpha\to\gamma):\quad {\bf g}_{\rm red}|_1\gets {\bf g}_{\rm red}|_1-(1,0),\quad {\bf g}_{\rm red}|_2\gets {\bf g}_{\rm red}|_2+(1,0),
+\]
+\[
+(\delta\to\varepsilon):\quad {\bf g}_{\rm red}|_2\gets {\bf g}_{\rm red}|_2-\left(-\frac12,\frac{s}{2}\right),\quad
+{\bf g}_{\rm red}|_3\gets {\bf g}_{\rm red}|_3+\left(-\frac12,\frac{s}{2}\right),
+\]
+\[
+(\zeta\to\beta):\quad {\bf g}_{\rm red}|_3\gets {\bf g}_{\rm red}|_3-\left(-\frac12,-\frac{s}{2}\right),\quad
+{\bf g}_{\rm red}|_1\gets {\bf g}_{\rm red}|_1+\left(-\frac12,-\frac{s}{2}\right).
+\]
+
+Thus
+\[
+{\bf g}_{\rm red}|_1=\left(-1,0\right)+\left(-\frac12,-\frac{s}{2}\right)=\left(-\frac32,-\frac{s}{2}\right),
+\]
+\[
+{\bf g}_{\rm red}|_2=\left(1,0\right)+\left(\frac12,-\frac{s}{2}\right)=\left(\frac32,-\frac{s}{2}\right),
+\]
+\[
+{\bf g}_{\rm red}|_3=\left(-\frac12,\frac{s}{2}\right)+\left(\frac12,\frac{s}{2}\right)=\left(0,s\right).
+\]
+So in the ordering $(x_1,y_1,x_2,y_2,x_3,y_3)$:
+\[
+{\bf g}_{\rm red}=\left(-\frac32,-\frac{s}{2},\frac32,-\frac{s}{2},0,s\right)^\mathsf T.
+\]
+
+%============================================================
+\end{document}

@@ -19,11 +19,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
-# Dependencias mínimas: sin scipy ni numpy.
-# La geometría se implementa desde cero para mantener el proyecto liviano.
+# La geometría base se implementa desde cero para mantener el proyecto liviano.
+# numpy se usa solo en el método reducido libre de gauge (álgebra lineal: SVD,
+# núcleo de la matriz de rodadura y mínimos cuadrados); no se requiere scipy.
 dependencies = [
     "typer>=0.9.0",
     "matplotlib>=3.7.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
