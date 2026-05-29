@@ -66,10 +66,15 @@ def _draw_preset(canvas: tk.Canvas, built: dict, w: int, h: int, pad: int = 20) 
 
 
 class KnotGallery(tk.Toplevel):
-    """Ventana con la galería de nudos agrupada por número de cruces."""
+    """Ventana con la galería de nudos agrupada por número de cruces.
 
-    def __init__(self, master: tk.Misc | None = None):
+    Si se pasa *on_load*, cada tarjeta muestra un botón «Cargar en editor» que
+    invoca on_load(preset); así la galería puede alimentar al visor principal.
+    """
+
+    def __init__(self, master: tk.Misc | None = None, on_load=None):
         super().__init__(master)
+        self.on_load = on_load
         self.title("Galería de Nudos — diagramas cs del paper (arXiv:2005.13168)")
         self.geometry("1040x720")
         self.configure(bg="#f4f5f7")
@@ -139,7 +144,10 @@ class KnotGallery(tk.Toplevel):
             tk.Label(card, text=f"Ribbonlength (paper): {preset.ribbonlength}",
                      font=("Consolas", 8), fg="#2e7d32", bg="#ffffff").pack(anchor=tk.W, padx=8)
         tk.Label(card, text=preset.note, font=("Inter", 7), fg="#777", bg="#ffffff",
-                 wraplength=_CARD_W - 16, justify=tk.LEFT).pack(anchor=tk.W, padx=8, pady=(2, 8))
+                 wraplength=_CARD_W - 16, justify=tk.LEFT).pack(anchor=tk.W, padx=8, pady=(2, 6))
+        if self.on_load is not None:
+            ttk.Button(card, text="Cargar en editor",
+                       command=lambda p=preset: self.on_load(p)).pack(fill=tk.X, padx=8, pady=(0, 8))
 
 
 def main() -> None:

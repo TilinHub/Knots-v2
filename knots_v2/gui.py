@@ -4,6 +4,8 @@ from tkinter import ttk
 import threading
 import queue
 
+import numpy as np
+
 from knots_v2.domain.primitives import Point
 from knots_v2.domain.disk import Disk
 from knots_v2.domain.configuration import DiskConfiguration
@@ -144,13 +146,12 @@ class KnotsApp(tk.Tk):
         self.current_envelope = []
         self.custom_sequence = []
 
-        # Estado del cs-diagrama: una RUTA cíclica de discos. Para cada disco,
-        # un sentido de envoltura (+1 antihorario, −1 horario). Los segmentos
-        # tangentes y los arcos se calculan solos (tangentes comunes), de modo
-        # que el diagrama es C¹ por construcción y puede tener cruces.
-        self.cs_route: list[int] = []          # índices de disco en orden
-        self.cs_orient: dict[int, int] = {}    # {disk_idx: +1 | -1}
-        self.cs_curve: list = []               # polilínea del nudo (para dibujar)
+        # Estado del cs-diagrama: una lista de LAZOS cíclicos (un nudo = 1 lazo;
+        # un enlace = varios). Cada lazo es {"seq": [índices de disco en orden],
+        # "orient": {disk_idx: +1 antihorario | -1 horario}}. Los segmentos
+        # tangentes y arcos se calculan solos ⇒ C¹ por construcción; permite cruces.
+        self.cs_loops: list[dict] = []
+        self._cs_results: list[dict] = []  # resultado de build_route por lazo
 
         self.mode = tk.StringVar(value="move")
         self.show_envelope = tk.BooleanVar(value=True)
@@ -257,7 +258,7 @@ class KnotsApp(tk.Tk):
 
                 # La etiqueta superior pertenece a la envolvente solo si no hay nudo activo.
                 self._env_measure_text = f"Envolvente: {arcos_str}π + {rectas:.2f}  (Total: {total:.4f} u)"
-                if not self.cs_route:
+                if not self.cs_loops:
                     self.lbl_measure.config(text=self._env_measure_text)
                 needs_redraw = True
         except queue.Empty: pass
@@ -273,7 +274,7 @@ class KnotsApp(tk.Tk):
         r_screen = self.r_math * self.scale
         
         # 1. Dibujar Contorno (Envolvente Elastic CS) — se oculta si hay un nudo activo
-        if getattr(self, "current_envelope", None) and self.show_envelope.get() and not self.cs_route:
+        if getattr(self, "current_envelope", None) and self.show_envelope.get() and not self.cs_loops:
             coords = []
             for px, py in self.current_envelope:
                 sx, sy = self.math_to_screen(px, py)
@@ -359,7 +360,7 @@ class KnotsApp(tk.Tk):
 
             self.disks[self.dragged_disk_idx] = Point(mx, my)
             self._update_envelope_task()
-            if self.cs_route:
+            if self.cs_loops:
                 self._rebuild_knot()  # el nudo sigue al disco arrastrado
             self._redraw()
 
@@ -450,16 +451,19 @@ class KnotsApp(tk.Tk):
         self.lbl_variation.pack(fill=tk.X, pady=(4, 0))
 
         ttk.Separator(panel, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=8)
-        ttk.Button(panel, text="Borrar Ruta del Nudo", command=self._clear_cs_route).pack(fill=tk.X)
+        ttk.Button(panel, text="Nuevo Lazo (enlace)", command=self._new_cs_loop).pack(fill=tk.X, pady=(0, 4))
+        ttk.Button(panel, text="Borrar Nudo", command=self._clear_cs_route).pack(fill=tk.X)
         tk.Label(
             panel,
             text=("Modo «Construir Nudo (cs)»:\n"
                   "• clic en discos → arma la ruta\n"
                   "   (segmentos = tangentes comunes,\n"
                   "    arcos automáticos ⇒ C¹)\n"
-                  "• clic derecho en un disco de la\n"
-                  "   ruta → invierte su giro ↺/↻\n"
-                  "   (giros opuestos ⇒ cruce)"),
+                  "• clic derecho en un disco → invierte\n"
+                  "   su giro ↺/↻ (opuestos ⇒ cruce)\n"
+                  "• «Nuevo Lazo» para enlaces de\n"
+                  "   varias componentes\n"
+                  "• «Galería de Nudos» → cargar presets"),
             font=("Inter", 8), fg="#777", bg="#f4f5f7", justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(8, 0))
 
@@ -473,57 +477,70 @@ class KnotsApp(tk.Tk):
         return cfg
 
     def _rebuild_knot(self):
-        """Recalcula el nudo (curva + diagrama) desde la ruta y refresca el panel."""
+        """Recalcula todos los lazos (curvas + diagramas) y refresca el panel."""
         centers = [Point(p.x, p.y) for p in self.disks]
-        orient = [self.cs_orient.get(d, 1) for d in self.cs_route]
-        self._cs_res = build_route(centers, self.r_math, list(self.cs_route), orient)
-        self.cs_curve = self._cs_res["polyline"] if self._cs_res["ok"] else []
+        self._cs_results = []
+        for loop in self.cs_loops:
+            orient = [loop["orient"].get(d, 1) for d in loop["seq"]]
+            self._cs_results.append(
+                build_route(centers, self.r_math, list(loop["seq"]), orient)
+            )
         self._refresh_cs_panel()
 
     def _refresh_cs_panel(self):
         if not hasattr(self, "cs_text"):
             return
-        res = getattr(self, "_cs_res", None)
+        results = self._cs_results
 
-        # Descripción de la ruta con el giro de cada disco (↺ antihorario, ↻ horario)
+        # Descripción de los lazos (↺ antihorario, ↻ horario)
         self.cs_text.delete("1.0", tk.END)
-        if not self.cs_route:
-            self.cs_text.insert("1.0", "Ruta vacía.\nClic en discos para armar el nudo.")
+        if not self.cs_loops:
+            self.cs_text.insert("1.0", "Sin nudo.\nClic en discos para armar un lazo.")
         else:
-            parts = [f"D{d}{'↺' if self.cs_orient.get(d, 1) > 0 else '↻'}" for d in self.cs_route]
-            self.cs_text.insert("1.0", "Ruta:  " + " → ".join(parts) + "  → (cierra)")
+            lines = []
+            for k, loop in enumerate(self.cs_loops):
+                parts = [f"D{d}{'↺' if loop['orient'].get(d, 1) > 0 else '↻'}" for d in loop["seq"]]
+                prefix = f"L{k + 1}: " if len(self.cs_loops) > 1 else "Ruta: "
+                lines.append(prefix + " → ".join(parts))
+            self.cs_text.insert("1.0", "\n".join(lines))
 
-        if res is None or not res["ok"] or res["diagram"] is None:
+        ok_results = [r for r in results if r["ok"]]
+        if not ok_results:
             self.lbl_length.config(text="Longitud del núcleo: —")
-            self.lbl_cycle.config(text="C1: —", fg="#777")
+            self.lbl_cycle.config(text="Tangente imposible (discos solapados)", fg="#c0392b")
             self.lbl_variation.config(text="Primera variación: —", fg="#777")
-            if res is not None and not res["ok"]:
-                self.lbl_cycle.config(text="Tangente imposible (discos solapados)", fg="#c0392b")
             return
 
-        # Longitud descompuesta: arcos (múltiplos de π) + segmentos rectos, como
-        # la envolvente. Total idéntico, pero separa la parte curva de la recta.
-        arcos_pi = res["arc_length"] / math.pi
-        rectas = res["segment_length"]
-        length = res["length"]
-        text = f"{arcos_pi:g}π + {rectas:.2f}  (Total: {length:.4f})"
+        # Longitud agregada de TODOS los lazos (incl. círculos): arcos (π) + rectas.
+        arc_total = sum(r["arc_length"] for r in ok_results)
+        seg_total = sum(r["segment_length"] for r in ok_results)
+        length = arc_total + seg_total
+        text = f"{arc_total / math.pi:g}π + {seg_total:.2f}  (Total: {length:.4f})"
         self.lbl_length.config(text=f"Longitud del núcleo: {text}")
         self.lbl_measure.config(text=f"Nudo cs:  {text} u")
 
-        if not res["valid"]:
-            self.lbl_cycle.config(
-                text="⚠ La ruta atraviesa discos (no embebido)", fg="#c0392b"
-            )
-        else:
-            cfg = self._cfg()
-            c1 = res["diagram"].validate_c1(cfg)
-            self.lbl_cycle.config(text=f"C1: {'OK' if c1 else 'FALLA'}", fg="#2e7d32" if c1 else "#c0392b")
-
         cfg = self._cfg()
+        diagrammed = [r for r in ok_results if r["diagram"] is not None]
+        all_valid = all(r["valid"] for r in ok_results)
+        all_c1 = all(r["diagram"].validate_c1(cfg) for r in diagrammed)
+        if not all_valid:
+            self.lbl_cycle.config(text="⚠ La ruta atraviesa discos (no embebido)", fg="#c0392b")
+        else:
+            self.lbl_cycle.config(text=f"C1: {'OK' if all_c1 else 'FALLA'}",
+                                  fg="#2e7d32" if all_c1 else "#c0392b")
+
+        # Lazos solo-círculo (un disco) no tienen segmentos ⇒ primera variación nula.
+        if not diagrammed:
+            self.lbl_variation.config(text="Primera variación: 0 (círculos, sin segmentos)", fg="#777")
+            return
+
+        # Primera variación: g_red es aditivo sobre los segmentos de todos los lazos.
         contacts = detect_contact_set(cfg)
         A = build_rolling_matrix(cfg, contacts)
         K = rolling_space_basis(A)
-        g = build_gradient(res["diagram"], cfg)
+        g = np.zeros(2 * len(self.disks))
+        for r in diagrammed:
+            g += build_gradient(r["diagram"], cfg)
         is_stat, residual = is_stationary_kernel(g, K)
         status = "ESTACIONARIO" if is_stat else f"no estacionario (residuo {residual:.1e})"
         self.lbl_variation.config(
@@ -534,45 +551,75 @@ class KnotsApp(tk.Tk):
     def _open_gallery(self):
         """Abre la galería de nudos del paper en una ventana aparte."""
         from knots_v2.gallery import KnotGallery
-        KnotGallery(self)
+        KnotGallery(self, on_load=self._load_preset)
+
+    def _load_preset(self, preset):
+        """Carga un preset de la galería en el editor (reemplaza discos y lazos)."""
+        self.disks = [Point(x, y) for x, y in preset.disks]
+        self.cs_loops = []
+        for sequence, orientations in preset.loops:
+            orient = {d: orientations[pos] for pos, d in enumerate(sequence)}
+            self.cs_loops.append({"seq": list(sequence), "orient": orient})
+        self.mode.set("cs_build")
+        self.custom_sequence = []
+        self.dragged_disk_idx = None
+        self._update_envelope_task()
+        self._rebuild_knot()
+        self._redraw()
+        self.lift()
+        self.focus_force()
 
     def _clear_cs_route(self):
-        self.cs_route.clear()
-        self.cs_orient.clear()
-        self.cs_curve = []
+        self.cs_loops = []
+        self._cs_results = []
         self._rebuild_knot()
         # Restaura de inmediato la etiqueta superior a la envolvente.
         self.lbl_measure.config(text=getattr(self, "_env_measure_text", "Envolvente: —"))
         self._update_envelope_task()
         self._redraw()
 
+    def _new_cs_loop(self):
+        """Inicia un nuevo lazo vacío (para enlaces de varias componentes)."""
+        if not self.cs_loops or self.cs_loops[-1]["seq"]:
+            self.cs_loops.append({"seq": [], "orient": {}})
+
     # ------------------------------------------------------------------
     # Interacción del modo construcción
     # ------------------------------------------------------------------
 
     def _cs_build_click(self, event, disk_idx):
-        """Clic izquierdo en modo nudo: añade el disco a la ruta."""
+        """Clic izquierdo en modo nudo: añade el disco al lazo activo (el último)."""
         if disk_idx is None:
             return
-        self.cs_route.append(disk_idx)
-        self.cs_orient.setdefault(disk_idx, 1)
+        if not self.cs_loops:
+            self.cs_loops.append({"seq": [], "orient": {}})
+        loop = self.cs_loops[-1]
+        loop["seq"].append(disk_idx)
+        loop["orient"].setdefault(disk_idx, 1)
         self._rebuild_knot()
         self._redraw()
 
     def _cs_toggle_orientation(self, disk_idx):
-        """Clic derecho en modo nudo: invierte el sentido de envoltura del disco."""
-        if disk_idx is None or disk_idx not in self.cs_route:
-            return
-        self.cs_orient[disk_idx] = -self.cs_orient.get(disk_idx, 1)
-        self._rebuild_knot()
-        self._redraw()
+        """Clic derecho en modo nudo: invierte el giro del disco en todos los lazos."""
+        flipped = False
+        for loop in self.cs_loops:
+            if disk_idx in loop["orient"]:
+                loop["orient"][disk_idx] = -loop["orient"][disk_idx]
+                flipped = True
+        if flipped:
+            self._rebuild_knot()
+            self._redraw()
 
     def _purge_cs_for_deleted_disk(self, idx):
-        """Reindexa/elimina la ruta tras borrar el disco *idx*."""
-        self.cs_route = [d - 1 if d > idx else d for d in self.cs_route if d != idx]
-        self.cs_orient = {
-            (d - 1 if d > idx else d): s for d, s in self.cs_orient.items() if d != idx
-        }
+        """Reindexa/elimina los lazos tras borrar el disco *idx*."""
+        new_loops = []
+        for loop in self.cs_loops:
+            seq = [d - 1 if d > idx else d for d in loop["seq"] if d != idx]
+            orient = {(d - 1 if d > idx else d): s
+                      for d, s in loop["orient"].items() if d != idx}
+            if seq:
+                new_loops.append({"seq": seq, "orient": orient})
+        self.cs_loops = new_loops
         self._rebuild_knot()
 
     # ------------------------------------------------------------------
@@ -580,28 +627,31 @@ class KnotsApp(tk.Tk):
     # ------------------------------------------------------------------
 
     def _draw_cs_overlay(self):
-        # Curva del nudo: una sola polilínea (los cruces aparecen naturalmente).
-        # Naranja si la ruta atraviesa discos (no embebido); roja si es válida.
-        if len(self.cs_curve) >= 2:
-            valid = getattr(self, "_cs_res", {}).get("valid", True)
-            color = "#c0392b" if valid else "#e67e22"
+        # Cada lazo es una polilínea (los cruces aparecen naturalmente).
+        # Naranja si el lazo atraviesa discos (no embebido); rojo si es válido.
+        for res in self._cs_results:
+            poly = res.get("polyline", [])
+            if len(poly) < 2:
+                continue
+            color = "#c0392b" if res.get("valid", True) else "#e67e22"
             coords = []
-            for p in self.cs_curve:
+            for p in poly:
                 sx, sy = self.math_to_screen(p.x, p.y)
                 coords.extend([sx, sy])
             self.canvas.create_line(coords, fill=color, width=4, joinstyle=tk.ROUND, capstyle=tk.ROUND)
 
-        # Orden y giro de cada disco de la ruta.
-        for order, d in enumerate(self.cs_route):
-            if d >= len(self.disks):
-                continue
-            c = self.disks[d]
-            sx, sy = self.math_to_screen(c.x, c.y)
-            spin = "↺" if self.cs_orient.get(d, 1) > 0 else "↻"
-            self.canvas.create_text(
-                sx, sy - 18, text=f"{order + 1}{spin}", anchor=tk.CENTER,
-                fill="#c0392b", font=("Inter", 11, "bold"),
-            )
+        # Orden y giro de cada disco en cada lazo.
+        for loop in self.cs_loops:
+            for order, d in enumerate(loop["seq"]):
+                if d >= len(self.disks):
+                    continue
+                c = self.disks[d]
+                sx, sy = self.math_to_screen(c.x, c.y)
+                spin = "↺" if loop["orient"].get(d, 1) > 0 else "↻"
+                self.canvas.create_text(
+                    sx, sy - 18, text=f"{order + 1}{spin}", anchor=tk.CENTER,
+                    fill="#c0392b", font=("Inter", 11, "bold"),
+                )
 
 if __name__ == "__main__":
     app = KnotsApp()
