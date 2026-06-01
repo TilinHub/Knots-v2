@@ -143,6 +143,12 @@ class KnotGallery(tk.Toplevel):
         if preset.ribbonlength and preset.ribbonlength != "—":
             tk.Label(card, text=f"Ribbonlength (paper): {preset.ribbonlength}",
                      font=("Consolas", 8), fg="#2e7d32", bg="#ffffff").pack(anchor=tk.W, padx=8)
+        if preset.conway:
+            tk.Label(
+                card,
+                text=f"Conway C{preset.conway}  →  2-puente {preset.fraction()}",
+                font=("Consolas", 8), fg="#8e44ad", bg="#ffffff",
+            ).pack(anchor=tk.W, padx=8)
         tk.Label(card, text=preset.note, font=("Inter", 7), fg="#777", bg="#ffffff",
                  wraplength=_CARD_W - 16, justify=tk.LEFT).pack(anchor=tk.W, padx=8, pady=(2, 6))
         if self.on_load is not None:

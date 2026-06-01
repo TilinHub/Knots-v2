@@ -34,10 +34,56 @@ class TestPresets:
     def test_grouped_by_crossings_sorted(self) -> None:
         groups = presets_by_crossings()
         assert list(groups.keys()) == sorted(groups.keys())
-        # cubre 0..4 cruces
-        assert {0, 1, 2, 3, 4} <= set(groups.keys())
+        # cubre 0..5 y 7 cruces (tóricos 5₁, 7₁ incluidos)
+        assert {0, 1, 2, 3, 4, 5, 7} <= set(groups.keys())
 
     def test_crossing_numbers_are_documented(self) -> None:
-        # cada preset declara su número de cruces (valor del paper)
+        # cada preset declara su número de cruces
         for preset in PRESETS:
             assert preset.crossings >= 0
+
+    def test_single_loop_knots_have_exact_crossings(self) -> None:
+        """Todo nudo de un lazo con segmentos tiene exactamente sus cruces declarados.
+
+        Cubre 3₁, 4₁, 5₁, 5₂, 6₁, 7₁, 7₂ (tóricos y twist knots).
+        """
+        for preset in PRESETS:
+            if len(preset.loops) != 1:
+                continue
+            res = build_preset(preset)["loops"][0]
+            if res["diagram"] is None or not res["diagram"].segments:
+                continue  # círculo puro (unknot): sin segmentos
+            assert res["ok"] and res["valid"], f"{preset.name}: no válido"
+            assert _segment_crossings(res) == preset.crossings, (
+                f"{preset.name}: {_segment_crossings(res)} cruces, esperado {preset.crossings}"
+            )
+
+    def test_covers_all_crossings_up_to_7(self) -> None:
+        """La galería cubre todos los números de cruce de 0 a 7."""
+        assert set(presets_by_crossings().keys()) == {0, 1, 2, 3, 4, 5, 6, 7}
+
+
+def _segment_crossings(res: dict) -> int:
+    """Cuenta intersecciones transversales entre los segmentos rectos del diagrama."""
+    diagram = res["diagram"]
+    pts = {lbl.name: lbl.point for lbl in diagram.labels}
+    segs = [(pts[s.start], pts[s.end]) for s in diagram.segments]
+
+    def orient(p, q, r):
+        return (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+
+    def proper_cross(a, b, c, d):
+        o1, o2 = orient(a, b, c), orient(a, b, d)
+        o3, o4 = orient(c, d, a), orient(c, d, b)
+        return (o1 > 1e-9) != (o2 > 1e-9) and (o3 > 1e-9) != (o4 > 1e-9)
+
+    total = 0
+    for i in range(len(segs)):
+        for j in range(i + 1, len(segs)):
+            a, b = segs[i]
+            c, d = segs[j]
+            shared = any(abs(p.x - q.x) < 1e-6 and abs(p.y - q.y) < 1e-6
+                         for p in (a, b) for q in (c, d))
+            if not shared and proper_cross(a, b, c, d):
+                total += 1
+    return total
