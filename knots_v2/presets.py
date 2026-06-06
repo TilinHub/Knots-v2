@@ -60,7 +60,13 @@ def _star_route(n: int, step: int = 2) -> tuple[int, ...]:
 # Con tejido alternante produce el twist knot de m+3 cruces (5₂, 6₁, 7₂).
 # ----------------------------------------------------------------------
 
-def _twist_disks(m: int, vgap: float = 2.8, dx: float = 3.0) -> tuple[tuple[float, float], ...]:
+# Separación (vgap vertical, dx lateral) ajustada por m para que el diagrama
+# quede lo más compacto posible (bounding box casi cuadrado, no escalera alta).
+_TWIST_SPACING: dict[int, tuple[float, float]] = {2: (2.5, 2.2), 3: (2.1, 2.2), 4: (2.3, 3.0)}
+
+
+def _twist_disks(m: int) -> tuple[tuple[float, float], ...]:
+    vgap, dx = _TWIST_SPACING.get(m, (2.2, 2.5))
     column = tuple((0.0, (k - (m - 1) / 2) * vgap) for k in range(m))
     return ((-dx, 0.0),) + column + ((dx, 0.0),)
 

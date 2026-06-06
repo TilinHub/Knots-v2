@@ -1,8 +1,11 @@
-"""Galería de nudos: ventana *separada* que muestra los presets del paper.
+"""Galería de nudos: ventana *separada* con los diagramas estándar de Rolfsen.
 
-Reproduce los diagramas cs minimales (arXiv:2005.13168) agrupados por número de
-cruces. Es una función independiente del editor principal: se puede abrir desde
-un botón del visor o ejecutarse sola con ``python -m knots_v2.gallery``.
+Dibuja cada nudo a partir de su PD code (traversal → embedding planar de Tutte →
+curva suave → over/under). Muestra además el vector de Conway y la fracción
+2--puente b(p,q). Si un nudo tiene una construcción cs en el catálogo, ofrece
+«Cargar en editor».
+
+Se abre desde el visor o con ``python -m knots_v2.gallery``.
 """
 
 from __future__ import annotations
@@ -10,89 +13,44 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .presets import KnotPreset, build_preset, presets_by_crossings
+from .pd_draw import KNOT_GAUSS_CODES, draw_on_canvas, knot_layout
+from .presets import PRESETS
+from .rational import ROLFSEN_2BRIDGE, fraction_label
 
-_R = 1.0
-_CARD_W = 240
-_CANVAS_H = 200
-_DISK_FILL = "#dce9fb"
-_DISK_OUTLINE = "#9bbbe6"
-_CURVE = "#c0392b"
+_CARD_W = 220
+_CANVAS_H = 190
 
 
-def _draw_preset(canvas: tk.Canvas, built: dict, w: int, h: int, pad: int = 20) -> None:
-    """Dibuja un preset en *canvas* ajustando la escala para que entre completo."""
-    xs: list[float] = []
-    ys: list[float] = []
-    for res in built["loops"]:
-        for p in res["polyline"]:
-            xs.append(p.x)
-            ys.append(p.y)
-    for c in built["centers"]:
-        xs.extend([c.x - _R, c.x + _R])
-        ys.extend([c.y - _R, c.y + _R])
-    if not xs:
-        return
+def _crossing_number(name: str) -> int:
+    return int(name.split("_")[0])
 
-    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
-    span_x = max(1e-6, maxx - minx)
-    span_y = max(1e-6, maxy - miny)
-    scale = min((w - 2 * pad) / span_x, (h - 2 * pad) / span_y)
-    off_x = (w - span_x * scale) / 2
-    off_y = (h - span_y * scale) / 2
 
-    def tx(x: float, y: float) -> tuple[float, float]:
-        return off_x + (x - minx) * scale, h - (off_y + (y - miny) * scale)
-
-    # Discos (regiones complementarias)
-    for c in built["centers"]:
-        x0, y0 = tx(c.x - _R, c.y - _R)
-        x1, y1 = tx(c.x + _R, c.y + _R)
-        canvas.create_oval(
-            min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1),
-            fill=_DISK_FILL, outline=_DISK_OUTLINE,
-        )
-
-    # Núcleo del nudo (una polilínea por lazo; los cruces aparecen solos)
-    for res in built["loops"]:
-        if len(res["polyline"]) >= 2:
-            coords: list[float] = []
-            for p in res["polyline"]:
-                sx, sy = tx(p.x, p.y)
-                coords.extend([sx, sy])
-            canvas.create_line(
-                coords, fill=_CURVE, width=3, joinstyle=tk.ROUND, capstyle=tk.ROUND
-            )
+def _pretty(name: str) -> str:
+    base, _, idx = name.partition("_")
+    subs = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+    return "Unknot" if name == "0_1" else f"{base}{idx.translate(subs)}"
 
 
 class KnotGallery(tk.Toplevel):
-    """Ventana con la galería de nudos agrupada por número de cruces.
-
-    Si se pasa *on_load*, cada tarjeta muestra un botón «Cargar en editor» que
-    invoca on_load(preset); así la galería puede alimentar al visor principal.
-    """
+    """Galería de los diagramas estándar de Rolfsen, agrupados por nº de cruces."""
 
     def __init__(self, master: tk.Misc | None = None, on_load=None):
         super().__init__(master)
         self.on_load = on_load
-        self.title("Galería de Nudos — diagramas cs del paper (arXiv:2005.13168)")
-        self.geometry("1040x720")
+        self.title("Galería de Nudos — diagramas estándar (PD codes)")
+        self.geometry("1100x760")
         self.configure(bg="#f4f5f7")
+        # preset por vector de Conway (para el botón «Cargar en editor»)
+        self._preset_by_conway = {p.conway: p for p in PRESETS if p.conway}
         self._build()
 
     def _build(self) -> None:
-        ttk.Label(
-            self, text="Galería de Nudos cs", font=("Inter", 16, "bold"),
-            foreground="#2A6496", background="#f4f5f7",
-        ).pack(anchor=tk.W, padx=16, pady=(12, 0))
-        ttk.Label(
-            self,
-            text="Diagramas de longitud mínima por número de cruces. Discos = regiones; "
-                 "curva roja = núcleo (arcos de radio 1 + segmentos tangentes).",
-            background="#f4f5f7", foreground="#555",
-        ).pack(anchor=tk.W, padx=16, pady=(0, 8))
+        ttk.Label(self, text="Galería de Nudos — diagramas estándar", font=("Inter", 16, "bold"),
+                  foreground="#2A6496", background="#f4f5f7").pack(anchor=tk.W, padx=16, pady=(12, 0))
+        ttk.Label(self, text="Trazados desde PD codes: embedding planar + curva suave + over/under. "
+                             "Etiqueta: Conway C(...) → 2-puente b(p,q).",
+                  background="#f4f5f7", foreground="#555").pack(anchor=tk.W, padx=16, pady=(0, 8))
 
-        # Área desplazable
         container = tk.Frame(self, bg="#f4f5f7")
         container.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
         canvas = tk.Canvas(container, bg="#f4f5f7", highlightthickness=0)
@@ -104,60 +62,52 @@ class KnotGallery(tk.Toplevel):
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        for crossings, group in presets_by_crossings().items():
-            label = "0 cruces" if crossings == 0 else (
-                "1 cruce" if crossings == 1 else f"{crossings} cruces"
-            )
-            header = tk.Frame(inner, bg="#f4f5f7")
-            header.pack(fill=tk.X, pady=(10, 2))
-            tk.Label(
-                header, text=f"  ●  {label}", font=("Inter", 12, "bold"),
-                fg="#1c3046", bg="#e7edf6", anchor=tk.W,
-            ).pack(fill=tk.X)
+        names = sorted(KNOT_GAUSS_CODES, key=lambda nm: (_crossing_number(nm), nm))
+        groups: dict[int, list[str]] = {}
+        for nm in names:
+            groups.setdefault(_crossing_number(nm), []).append(nm)
 
+        for cn, group in sorted(groups.items()):
+            label = "0 cruces" if cn == 0 else ("1 cruce" if cn == 1 else f"{cn} cruces")
+            tk.Label(inner, text=f"  ●  {label}", font=("Inter", 12, "bold"),
+                     fg="#1c3046", bg="#e7edf6", anchor=tk.W).pack(fill=tk.X, pady=(10, 2))
             row = tk.Frame(inner, bg="#f4f5f7")
             row.pack(fill=tk.X, anchor=tk.W)
-            for preset in group:
-                self._make_card(row, preset)
+            for nm in group:
+                self._make_card(row, nm)
 
-    def _make_card(self, parent: tk.Misc, preset: KnotPreset) -> None:
-        # Sin pack_propagate(False): la tarjeta se dimensiona a su contenido
-        # (el canvas fija el ancho; las etiquetas hacen wrap dentro de ese ancho).
+    def _make_card(self, parent: tk.Misc, name: str) -> None:
         card = tk.Frame(parent, bg="#ffffff", bd=1, relief=tk.SOLID)
         card.pack(side=tk.LEFT, padx=6, pady=6, anchor=tk.N)
 
         cv = tk.Canvas(card, width=_CARD_W - 2, height=_CANVAS_H, bg="#ffffff", highlightthickness=0)
         cv.pack()
-        built = build_preset(preset, _R)
-        cv.update_idletasks()
-        _draw_preset(cv, built, _CARD_W - 2, _CANVAS_H)
+        layout = knot_layout(name)
+        if layout["ok"]:
+            draw_on_canvas(cv, layout, _CARD_W - 2, _CANVAS_H)
+        else:
+            cv.create_text((_CARD_W - 2) / 2, _CANVAS_H / 2 - 10, text="PD code inválido",
+                           fill="#c0392b", font=("Inter", 10, "bold"))
+            cv.create_text((_CARD_W - 2) / 2, _CANVAS_H / 2 + 10, text="(falta código estándar)",
+                           fill="#999", font=("Inter", 8))
 
-        tk.Label(card, text=preset.name, font=("Inter", 11, "bold"), fg="#2A6496", bg="#ffffff",
-                 wraplength=_CARD_W - 16).pack(anchor=tk.W, padx=8, pady=(4, 0))
-        length = built["length"]
-        tk.Label(
-            card,
-            text=f"Cruces: {preset.crossings}    Longitud: {length:.3f}  ({length / 3.141592653589793:.3f} π)",
-            font=("Consolas", 8), fg="#333", bg="#ffffff",
-        ).pack(anchor=tk.W, padx=8)
-        if preset.ribbonlength and preset.ribbonlength != "—":
-            tk.Label(card, text=f"Ribbonlength (paper): {preset.ribbonlength}",
-                     font=("Consolas", 8), fg="#2e7d32", bg="#ffffff").pack(anchor=tk.W, padx=8)
-        if preset.conway:
-            tk.Label(
-                card,
-                text=f"Conway C{preset.conway}  →  2-puente {preset.fraction()}",
-                font=("Consolas", 8), fg="#8e44ad", bg="#ffffff",
-            ).pack(anchor=tk.W, padx=8)
-        tk.Label(card, text=preset.note, font=("Inter", 7), fg="#777", bg="#ffffff",
-                 wraplength=_CARD_W - 16, justify=tk.LEFT).pack(anchor=tk.W, padx=8, pady=(2, 6))
-        if self.on_load is not None:
-            ttk.Button(card, text="Cargar en editor",
-                       command=lambda p=preset: self.on_load(p)).pack(fill=tk.X, padx=8, pady=(0, 8))
+        tk.Label(card, text=_pretty(name), font=("Inter", 13, "bold"), fg="#2A6496",
+                 bg="#ffffff").pack(anchor=tk.W, padx=8, pady=(4, 0))
+        conway = ROLFSEN_2BRIDGE.get(name)
+        if conway:
+            tk.Label(card, text=f"Conway C{conway} → {fraction_label(conway)}",
+                     font=("Consolas", 8), fg="#8e44ad", bg="#ffffff").pack(anchor=tk.W, padx=8)
+            preset = self._preset_by_conway.get(conway)
+            if preset and self.on_load is not None:
+                ttk.Button(card, text="Cargar en editor",
+                           command=lambda p=preset: self.on_load(p)).pack(fill=tk.X, padx=8, pady=(4, 8))
+            else:
+                tk.Frame(card, height=6, bg="#ffffff").pack()
+        else:
+            tk.Frame(card, height=6, bg="#ffffff").pack()
 
 
 def main() -> None:
-    """Punto de entrada autónomo: abre la galería en su propia ventana."""
     root = tk.Tk()
     root.withdraw()
     gallery = KnotGallery(root)
