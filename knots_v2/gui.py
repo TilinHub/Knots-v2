@@ -485,6 +485,53 @@ class KnotsApp(tk.Tk):
             if not moved:
                 break
 
+    def _cs_segments_geometry(self):
+        """Segmentos rectos del nudo cs: (ax, ay, bx, by, discoA, discoB)."""
+        segs = []
+        for res in self._cs_results:
+            diagram = res.get("diagram") if res else None
+            if not diagram:
+                continue
+            pts = {lab.name: (lab.point, lab.disk_idx) for lab in diagram.labels}
+            for s in diagram.segments:
+                pa, da = pts[s.start]
+                pb, db = pts[s.end]
+                segs.append((pa.x, pa.y, pb.x, pb.y, da, db))
+        return segs
+
+    def _resolve_elastic(self, fixed):
+        """Elástico del nudo cs: empuja los discos fuera de los segmentos de la banda
+        (además de evitar solapes) para que la curva NO atraviese ningún disco."""
+        self._resolve_collisions(fixed=fixed)
+        if not self.cs_loops:
+            return
+        r = self.r_math
+        for _ in range(6):
+            self._rebuild_knot()
+            moved = False
+            for ax, ay, bx, by, da, db in self._cs_segments_geometry():
+                vx, vy = bx - ax, by - ay
+                length_sq = vx * vx + vy * vy
+                if length_sq < 1e-9:
+                    continue
+                for i, p in enumerate(self.disks):
+                    if i in (da, db) or i == fixed:
+                        continue
+                    t = max(0.0, min(1.0, ((p.x - ax) * vx + (p.y - ay) * vy) / length_sq))
+                    qx, qy = ax + t * vx, ay + t * vy
+                    dx, dy = p.x - qx, p.y - qy
+                    dist = math.hypot(dx, dy)
+                    if dist < r - 1e-6:
+                        if dist < 1e-9:
+                            dx, dy, dist = -vy, vx, math.sqrt(length_sq)
+                        push = (r - dist) + 0.03
+                        self.disks[i] = Point(p.x + dx / dist * push, p.y + dy / dist * push)
+                        moved = True
+            self._resolve_collisions(fixed=fixed)
+            if not moved:
+                break
+        self._rebuild_knot()
+
     def _on_release(self, event):
         self.dragged_disk_idx = None
 
@@ -689,7 +736,73 @@ class KnotsApp(tk.Tk):
             self._load_preset(preset)
         else:
             from knots_v2.pd_draw import knot_layout
-            self.loaded_layout = knot_layout(name)
+            import math
+            from knots_v2.domain.primitives import Point
+            
+            layout = knot_layout(name)
+            self.loaded_layout = None  # force interactive mode
+            
+            if layout and layout.get("ok"):
+                regions = layout["regions"]
+                curve = layout["curve"]
+                
+                # Geometrically 2-color regions
+                adj = {i: set() for i in range(len(regions))}
+                def closest_two(px, py):
+                    dists = [(math.hypot(px - cx, py - cy), j) for j, (cx, cy, r) in enumerate(regions)]
+                    dists.sort()
+                    return dists[0][1], dists[1][1]
+
+                for i in range(0, len(curve), max(1, len(curve)//50)):
+                    r1, r2 = closest_two(curve[i][0], curve[i][1])
+                    adj[r1].add(r2)
+                    adj[r2].add(r1)
+
+                color = {}
+                q = [(0, 0)]
+                while q:
+                    curr, c = q.pop(0)
+                    if curr in color: continue
+                    color[curr] = c
+                    for nbr in adj[curr]:
+                        if nbr not in color:
+                            q.append((nbr, 1 - c))
+                            
+                for i in range(len(regions)):
+                    if i not in color: color[i] = 1
+                    
+                black_regions = [i for i, c in color.items() if c == 1]
+                old_to_new = {old: new for new, old in enumerate(black_regions)}
+                
+                scale_factor = 2.5
+                self.disks = [Point(regions[i][0] * scale_factor, regions[i][1] * scale_factor) for i in black_regions]
+                
+                seq = []
+                for p in curve:
+                    r1, r2 = closest_two(p[0], p[1])
+                    black_r = r1 if color.get(r1) == 1 else r2
+                    if color.get(black_r) != 1:
+                        black_r = r1 if color.get(r1) == 0 else r2
+                    disk_idx = old_to_new.get(black_r, 0)
+                    if not seq or seq[-1] != disk_idx:
+                        seq.append(disk_idx)
+                        
+                compressed = []
+                for s in seq:
+                    if not compressed or compressed[-1] != s:
+                        compressed.append(s)
+                if len(compressed) > 1 and compressed[0] == compressed[-1]:
+                    compressed.pop()
+                    
+                orient = {d: 1 for pos, d in enumerate(compressed)}
+                self.cs_loops = [{"seq": compressed, "orient": orient}]
+                
+                self.mode.set("cs_build")
+                self.custom_sequence = []
+                self.dragged_disk_idx = None
+                self._update_envelope_task()
+                self._rebuild_knot()
+
         self._redraw()
         self.lift()
         self.focus_force()
