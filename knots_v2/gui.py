@@ -146,6 +146,11 @@ class KnotsApp(tk.Tk):
         self.current_envelope = []
         self.custom_sequence = []
 
+        # Modo Rodar: un disco pivote y un disco que gira a su alrededor.
+        self.roll_pivot = None
+        self.roll_disk = None
+        self.rolling = False
+
         # Estado del cs-diagrama: una lista de LAZOS cíclicos (un nudo = 1 lazo;
         # un enlace = varios). Cada lazo es {"seq": [índices de disco en orden],
         # "orient": {disk_idx: +1 antihorario | -1 horario}}. Los segmentos
@@ -182,6 +187,9 @@ class KnotsApp(tk.Tk):
         ttk.Radiobutton(tools_frame, text="Delinear Envolvente", variable=self.mode, value="draw").pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(tools_frame, text="Borrar Disco", variable=self.mode, value="delete").pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(tools_frame, text="Construir Nudo (cs)", variable=self.mode, value="cs_build").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(tools_frame, text="Rodar", variable=self.mode, value="rolling").pack(side=tk.LEFT, padx=5)
+        ttk.Button(tools_frame, text="↺", width=2, command=lambda: self._roll_start(+1)).pack(side=tk.LEFT)
+        ttk.Button(tools_frame, text="↻", width=2, command=lambda: self._roll_start(-1)).pack(side=tk.LEFT, padx=(0, 5))
 
         ttk.Separator(tools_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, padx=10, fill=tk.Y)
         ttk.Button(tools_frame, text="Añadir Disco", command=self._add_disk_btn).pack(side=tk.LEFT, padx=4)
@@ -299,16 +307,29 @@ class KnotsApp(tk.Tk):
                     joinstyle=tk.ROUND, smooth=False
                 )
 
+        # Circunferencia guía del giro (modo Rodar) detrás de los discos.
+        if self.mode.get() == "rolling" and self.roll_pivot is not None and self.roll_disk is not None:
+            piv = self.disks[self.roll_pivot]
+            rol = self.disks[self.roll_disk]
+            rad = math.hypot(rol.x - piv.x, rol.y - piv.y) * self.scale
+            pcx, pcy = self.math_to_screen(piv.x, piv.y)
+            self.canvas.create_oval(pcx - rad, pcy - rad, pcx + rad, pcy + rad,
+                                    outline="#bdbdbd", dash=(4, 4))
+
         # 2. Dibujar Discos
         for i, p in enumerate(self.disks):
             sx, sy = self.math_to_screen(p.x, p.y)
             color = "#a3d1ff"
             outline_c = "#2A6496"
-            
+
             if self.mode.get() == "draw" and i in self.custom_sequence:
                 color = "#ffd27a"
                 outline_c = "#e09000"
-                
+            if self.mode.get() == "rolling" and i == self.roll_pivot:
+                color = "#a5d6a7"; outline_c = "#2e7d32"   # pivote: verde
+            elif self.mode.get() == "rolling" and i == self.roll_disk:
+                color = "#ffcc80"; outline_c = "#e65100"   # rodante: naranja
+
             self.canvas.create_oval(
                 sx - r_screen, sy - r_screen, sx + r_screen, sy + r_screen,
                 fill=color, outline=outline_c, width=3, tags=f"disk_{i}"
@@ -327,6 +348,18 @@ class KnotsApp(tk.Tk):
             self.canvas.create_text(
                 15, 15, text=seq_text, anchor=tk.NW, fill="#e74c3c", font=("Inter", 12, "bold")
             )
+
+        # Guía del modo Rodar
+        if self.mode.get() == "rolling":
+            if self.roll_pivot is None:
+                hint = "Rodar: clic en el disco PIVOTE"
+            elif self.roll_disk is None:
+                hint = f"Rodar: pivote D{self.roll_pivot} ✓ — clic en el disco que va a RODAR"
+            else:
+                hint = (f"Rodar: pivote D{self.roll_pivot}, rodante D{self.roll_disk} — "
+                        "↺/↻ para girar (se detiene al chocar)")
+            self.canvas.create_text(15, 15, text=hint, anchor=tk.NW,
+                                    fill="#2e7d32", font=("Inter", 12, "bold"))
 
         # 4. Superponer el cs-diagrama (etiquetas, segmentos, arcos)
         self._draw_cs_overlay()
@@ -351,32 +384,106 @@ class KnotsApp(tk.Tk):
                     self._redraw()
             case "cs_build":
                 self._cs_build_click(event, idx)
+            case "rolling":
+                self._roll_click(idx)
             case _:  # modo mover
                 self.dragged_disk_idx = idx
+
+    def _roll_click(self, idx):
+        """1er clic: disco pivote. 2º clic: disco que rodará. 3er clic: reinicia."""
+        self.rolling = False
+        if idx is None:
+            self.roll_pivot = self.roll_disk = None
+        elif self.roll_pivot is None:
+            self.roll_pivot = idx
+        elif self.roll_disk is None and idx != self.roll_pivot:
+            self.roll_disk = idx
+        else:
+            self.roll_pivot, self.roll_disk = idx, None
+        self._redraw()
+
+    def _roll_start(self, direction):
+        """Inicia el giro del disco rodante alrededor del pivote (+1 izq, −1 der)."""
+        if self.roll_pivot is None or self.roll_disk is None:
+            return
+        self.rolling = True
+        self._roll_dir = direction
+        self._roll_traveled = 0.0
+        self._roll_step()
+
+    def _roll_step(self):
+        if not self.rolling or self.roll_pivot is None or self.roll_disk is None:
+            return
+        pivot = self.disks[self.roll_pivot]
+        roll = self.disks[self.roll_disk]
+        radius = math.hypot(roll.x - pivot.x, roll.y - pivot.y)
+        if radius < 1e-9:
+            self.rolling = False
+            return
+        angle = math.atan2(roll.y - pivot.y, roll.x - pivot.x)
+        d_ang = 0.02 * self._roll_dir
+        new_angle = angle + d_ang
+        nx = pivot.x + radius * math.cos(new_angle)
+        ny = pivot.y + radius * math.sin(new_angle)
+
+        # ¿Choca con algún otro disco (no el pivote ni él mismo)?
+        for i, p in enumerate(self.disks):
+            if i in (self.roll_pivot, self.roll_disk):
+                continue
+            if math.hypot(nx - p.x, ny - p.y) < 2.0 * self.r_math - 1e-6:
+                self.rolling = False   # se detiene al chocar
+                return
+
+        self.disks[self.roll_disk] = Point(nx, ny)
+        self._roll_traveled += abs(d_ang)
+        self._update_envelope_task()
+        if self.cs_loops:
+            self._rebuild_knot()
+        self._redraw()
+        if self._roll_traveled < 2 * math.pi:   # como máximo una vuelta completa
+            self.after(20, self._roll_step)
+        else:
+            self.rolling = False
 
     def _on_drag(self, event):
         if self.mode.get() == "move" and self.dragged_disk_idx is not None:
             mx, my = self.screen_to_math(event.x, event.y)
-            
-            # Resolución de colisiones (3 pasadas para estabilidad con multiples)
-            for _ in range(3):
-                for i, p in enumerate(self.disks):
-                    if i != self.dragged_disk_idx:
-                        dist = math.hypot(mx - p.x, my - p.y)
-                        min_dist = 2.0 * self.r_math
-                        if dist < min_dist:
-                            if dist == 0:
-                                mx += 0.01; my += 0.01
-                                dist = math.hypot(mx - p.x, my - p.y)
-                            overlap = min_dist - dist
-                            mx += (mx - p.x) / dist * overlap
-                            my += (my - p.y) / dist * overlap
-
+            # El disco arrastrado sigue al cursor; los demás se empujan (elástico),
+            # de modo que nunca se solapan y la envolvente se deforma sin cruzarlos.
             self.disks[self.dragged_disk_idx] = Point(mx, my)
+            self._resolve_collisions(fixed=self.dragged_disk_idx)
             self._update_envelope_task()
             if self.cs_loops:
-                self._rebuild_knot()  # el nudo sigue al disco arrastrado
+                self._rebuild_knot()
             self._redraw()
+
+    def _resolve_collisions(self, fixed=None):
+        """Empuja los discos para que no se solapen. *fixed* (si se da) no se mueve."""
+        min_dist = 2.0 * self.r_math
+        n = len(self.disks)
+        for _ in range(30):
+            moved = False
+            for i in range(n):
+                for j in range(i + 1, n):
+                    pi, pj = self.disks[i], self.disks[j]
+                    dx, dy = pj.x - pi.x, pj.y - pi.y
+                    d = math.hypot(dx, dy)
+                    if d >= min_dist - 1e-9:
+                        continue
+                    if d < 1e-9:
+                        dx, dy, d = 1.0, 0.0, 1.0
+                    ux, uy = dx / d, dy / d
+                    overlap = min_dist - d
+                    if i == fixed:
+                        self.disks[j] = Point(pj.x + ux * overlap, pj.y + uy * overlap)
+                    elif j == fixed:
+                        self.disks[i] = Point(pi.x - ux * overlap, pi.y - uy * overlap)
+                    else:
+                        self.disks[i] = Point(pi.x - ux * overlap / 2, pi.y - uy * overlap / 2)
+                        self.disks[j] = Point(pj.x + ux * overlap / 2, pj.y + uy * overlap / 2)
+                    moved = True
+            if not moved:
+                break
 
     def _on_release(self, event):
         self.dragged_disk_idx = None
