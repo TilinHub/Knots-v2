@@ -14,7 +14,6 @@ import tkinter as tk
 from tkinter import ttk
 
 from .pd_draw import KNOT_GAUSS_CODES, draw_on_canvas, knot_layout
-from .presets import PRESETS
 from .rational import ROLFSEN_2BRIDGE, fraction_label
 
 _CARD_W = 220
@@ -40,8 +39,6 @@ class KnotGallery(tk.Toplevel):
         self.title("Galería de Nudos — diagramas estándar (PD codes)")
         self.geometry("1100x760")
         self.configure(bg="#f4f5f7")
-        # preset por vector de Conway (para el botón «Cargar en editor»)
-        self._preset_by_conway = {p.conway: p for p in PRESETS if p.conway}
         self._build()
 
     def _build(self) -> None:
@@ -97,12 +94,10 @@ class KnotGallery(tk.Toplevel):
         if conway:
             tk.Label(card, text=f"Conway C{conway} → {fraction_label(conway)}",
                      font=("Consolas", 8), fg="#8e44ad", bg="#ffffff").pack(anchor=tk.W, padx=8)
-            preset = self._preset_by_conway.get(conway)
-            if preset and self.on_load is not None:
-                ttk.Button(card, text="Cargar en editor",
-                           command=lambda p=preset: self.on_load(p)).pack(fill=tk.X, padx=8, pady=(4, 8))
-            else:
-                tk.Frame(card, height=6, bg="#ffffff").pack()
+        # «Cargar en editor» disponible para TODOS los nudos.
+        if self.on_load is not None:
+            ttk.Button(card, text="Cargar en editor",
+                       command=lambda nm=name: self.on_load(nm)).pack(fill=tk.X, padx=8, pady=(4, 8))
         else:
             tk.Frame(card, height=6, bg="#ffffff").pack()
 

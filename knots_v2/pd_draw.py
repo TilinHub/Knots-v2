@@ -15,6 +15,7 @@ debajo. Cada cruce aparece una vez con cada signo.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 
 KNOT_GAUSS_CODES: dict[str, list[int]] = {
     "0_1": [],
@@ -100,21 +101,81 @@ def _tutte(rot: dict[int, list[int]], outer: list[int], iters: int = 500) -> dic
     return pos
 
 
-def _catmull_rom(pts: list[list[float]], samples: int) -> list[tuple[float, float]]:
+def _self_crossings(points: list[tuple[float, float]]) -> int:
+    """Cuenta autointersecciones transversales de la polilínea cerrada."""
+    def o(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    m = len(points)
+    total = 0
+    for i in range(m):
+        a, b = points[i], points[(i + 1) % m]
+        for j in range(i + 2, m):
+            if i == 0 and j == m - 1:
+                continue
+            c, d = points[j], points[(j + 1) % m]
+            if (o(a, b, c) > 0) != (o(a, b, d) > 0) and (o(c, d, a) > 0) != (o(c, d, b) > 0):
+                total += 1
+    return total
+
+
+def _refine(pos: dict[int, list[float]], seq: list[int], rot: dict[int, list[int]],
+            iters: int = 160) -> dict[int, list[float]]:
+    """Separa nodos amontonados (repulsión + resortes) partiendo del layout de Tutte."""
+    nodes = list(rot)
+    P = {k: list(v) for k, v in pos.items()}
+    springs = [(seq[i], seq[(i + 1) % len(seq)]) for i in range(len(seq))]
+    for _ in range(iters):
+        force = {k: [0.0, 0.0] for k in nodes}
+        for a in range(len(nodes)):
+            ua = nodes[a]
+            for b in range(a + 1, len(nodes)):
+                ub = nodes[b]
+                dx, dy = P[ua][0] - P[ub][0], P[ua][1] - P[ub][1]
+                d2 = dx * dx + dy * dy + 1e-6
+                d = math.sqrt(d2)
+                f = 0.02 / d2
+                force[ua][0] += f * dx / d; force[ua][1] += f * dy / d
+                force[ub][0] -= f * dx / d; force[ub][1] -= f * dy / d
+        for u, v in springs:
+            dx, dy = P[v][0] - P[u][0], P[v][1] - P[u][1]
+            d = math.sqrt(dx * dx + dy * dy) + 1e-6
+            f = 0.20 * (d - 0.45)
+            force[u][0] += f * dx / d; force[u][1] += f * dy / d
+            force[v][0] -= f * dx / d; force[v][1] -= f * dy / d
+        for k in nodes:
+            P[k][0] += force[k][0]; P[k][1] += force[k][1]
+    return P
+
+
+def _catmull_rom(pts: list[list[float]], samples: int, alpha: float = 0.5) -> list[tuple[float, float]]:
+    """Spline Catmull--Rom CENTRÍPETO cerrado (alpha=0.5 evita lazos/overshoot)."""
     m = len(pts)
     curve: list[tuple[float, float]] = []
     for i in range(m):
         p0, p1, p2, p3 = pts[(i - 1) % m], pts[i], pts[(i + 1) % m], pts[(i + 2) % m]
+
+        def tnext(ta, pa, pb):
+            d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
+            return ta + max(d, 1e-6) ** alpha
+
+        t0 = 0.0
+        t1 = tnext(t0, p0, p1)
+        t2 = tnext(t1, p1, p2)
+        t3 = tnext(t2, p2, p3)
         for s in range(samples):
-            t = s / samples
-            t2, t3 = t * t, t * t * t
-            x = 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t +
-                       (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
-                       (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3)
-            y = 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t +
-                       (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
-                       (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
-            curve.append((x, y))
+            t = t1 + (t2 - t1) * s / samples
+
+            def lerp(pa, pb, ta, tb):
+                w = (t - ta) / (tb - ta)
+                return (pa[0] + (pb[0] - pa[0]) * w, pa[1] + (pb[1] - pa[1]) * w)
+
+            a1 = lerp(p0, p1, t0, t1)
+            a2 = lerp(p1, p2, t1, t2)
+            a3 = lerp(p2, p3, t2, t3)
+            b1 = lerp(a1, a2, t0, t2)
+            b2 = lerp(a2, a3, t1, t3)
+            curve.append(lerp(b1, b2, t1, t2))
     return curve
 
 
@@ -233,6 +294,7 @@ def _torus_layout(p: int, q: int) -> dict:
             "regions": _geometric_regions(curve, raw), "samples": 10, "n": len(crossings)}
 
 
+@lru_cache(maxsize=None)
 def knot_layout(name: str, samples: int = 16) -> dict:
     """Trazado del nudo *name*: curva suave + posiciones/muestras de los cruces."""
     if name in KNOT_PARAMETRIC:
@@ -241,7 +303,7 @@ def knot_layout(name: str, samples: int = 16) -> dict:
     if not gauss:
         circle = [(math.cos(2 * math.pi * i / 80), math.sin(2 * math.pi * i / 80)) for i in range(80)]
         return {"ok": True, "curve": circle, "crossings": [],
-                "regions": [(0.0, 0.0, 0.5)], "samples": 80, "n": 0}
+                "regions": [], "samples": 80, "n": 0}  # unknot: círculo limpio, sin disco-órbita
 
     n = len(gauss) // 2
     length = len(gauss)
@@ -274,14 +336,20 @@ def knot_layout(name: str, samples: int = 16) -> dict:
             for i in range(n) for j in range(i + 1, n)
         ) / diag if n >= 2 else 1.0
 
+    def quality(positions: dict[int, list[float]]) -> tuple[int, float]:
+        smooth = _catmull_rom([positions[node] for node in seq], samples)
+        spurious = abs(_self_crossings(smooth) - n)
+        return (-spurious, spread_score(positions))
+
     outer = max(faces, key=len)
     pos = _tutte(rot, outer)
-    best = spread_score(pos)
+    best = quality(pos)
     for cand in faces:
-        cand_pos = _tutte(rot, cand)
-        score = spread_score(cand_pos)
-        if score > best:
-            best, outer, pos = score, cand, cand_pos
+        base = _tutte(rot, cand)
+        for candidate_pos in (base, _refine(base, seq, rot)):
+            score = quality(candidate_pos)
+            if score > best:
+                best, outer, pos = score, cand, candidate_pos
 
     # Un disco por región acotada (cara distinta de la externa): el modelo del
     # paper pone un disco unidad en cada región complementaria.
@@ -311,8 +379,13 @@ def knot_layout(name: str, samples: int = 16) -> dict:
 
 
 def draw_on_canvas(canvas, layout: dict, w: int, h: int, pad: int = 18,
-                   color: str = "#1f6feb", bg: str = "#ffffff", width: int = 5) -> None:
-    """Dibuja el nudo en un canvas tkinter con cruces over/under (auto-ajuste)."""
+                   color: str = "#1f6feb", bg: str = "#ffffff", width: int = 5,
+                   show_disks: bool = False) -> None:
+    """Dibuja el nudo en un canvas tkinter con cruces over/under (auto-ajuste).
+
+    Por defecto dibuja solo el nudo (limpio, como Rolfsen). Con *show_disks* se
+    superponen los discos unidad por región (modelo del paper).
+    """
     curve = layout["curve"]
     if len(curve) < 2:
         return
@@ -333,12 +406,13 @@ def draw_on_canvas(canvas, layout: dict, w: int, h: int, pad: int = 18,
         canvas.create_line(flat, fill=color, width=width, joinstyle="round",
                            capstyle="round", smooth=True)
 
-    # Discos en cada región (modelo del paper), detrás de la curva.
-    for cx0, cy0, r0 in layout.get("regions", []):
-        cx, cy = tx((cx0, cy0))
-        rr = r0 * scale
-        canvas.create_oval(cx - rr, cy - rr, cx + rr, cy + rr,
-                           fill="#dce9fb", outline="#9bbbe6")
+    # Discos por región (modelo del paper), detrás de la curva — solo si se piden.
+    if show_disks:
+        for cx0, cy0, r0 in layout.get("regions", []):
+            cx, cy = tx((cx0, cy0))
+            rr = r0 * scale
+            canvas.create_oval(cx - rr, cy - rr, cx + rr, cy + rr,
+                               fill="#dce9fb", outline="#9bbbe6")
 
     polyline(pts + [pts[0]])
     r = width + 4

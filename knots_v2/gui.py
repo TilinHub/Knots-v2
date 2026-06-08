@@ -152,6 +152,7 @@ class KnotsApp(tk.Tk):
         # tangentes y arcos se calculan solos ⇒ C¹ por construcción; permite cruces.
         self.cs_loops: list[dict] = []
         self._cs_results: list[dict] = []  # resultado de build_route por lazo
+        self.loaded_layout = None          # diagrama estándar cargado desde la galería
 
         self.mode = tk.StringVar(value="move")
         self.show_envelope = tk.BooleanVar(value=True)
@@ -270,6 +271,19 @@ class KnotsApp(tk.Tk):
 
     def _redraw(self):
         self.canvas.delete("all")
+
+        # Vista de un diagrama estándar cargado desde la galería (cualquier nudo).
+        if self.loaded_layout and self.loaded_layout.get("ok"):
+            w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+            if w > 1:
+                from knots_v2.pd_draw import draw_on_canvas
+                draw_on_canvas(self.canvas, self.loaded_layout, w, h, show_disks=True)
+                self.canvas.create_text(
+                    15, 15, anchor=tk.NW, fill="#1f6feb", font=("Inter", 11, "bold"),
+                    text="Viendo diagrama estándar — «Borrar Nudo» para volver al editor cs",
+                )
+            return
+
         self._draw_grid()
         r_screen = self.r_math * self.scale
         
@@ -549,12 +563,33 @@ class KnotsApp(tk.Tk):
         )
 
     def _open_gallery(self):
-        """Abre la galería de nudos del paper en una ventana aparte."""
+        """Abre la galería de nudos en una ventana aparte."""
         from knots_v2.gallery import KnotGallery
-        KnotGallery(self, on_load=self._load_preset)
+        KnotGallery(self, on_load=self._load_knot)
+
+    def _load_knot(self, name: str):
+        """Carga CUALQUIER nudo de la galería en el editor.
+
+        Si tiene construcción cs (tóricos + twist), la carga MANIPULABLE (discos
+        arrastrables + primera variación), como antes. Si no (6₂,6₃,7₃₋₇), muestra
+        el diagrama estándar (solo vista).
+        """
+        from knots_v2.presets import PRESETS
+        from knots_v2.rational import ROLFSEN_2BRIDGE
+        conway = ROLFSEN_2BRIDGE.get(name)
+        preset = next((p for p in PRESETS if p.conway and p.conway == conway), None)
+        if preset is not None:
+            self._load_preset(preset)
+        else:
+            from knots_v2.pd_draw import knot_layout
+            self.loaded_layout = knot_layout(name)
+        self._redraw()
+        self.lift()
+        self.focus_force()
 
     def _load_preset(self, preset):
         """Carga un preset de la galería en el editor (reemplaza discos y lazos)."""
+        self.loaded_layout = None  # sale del modo vista, vuelve al editor cs
         self.disks = [Point(x, y) for x, y in preset.disks]
         self.cs_loops = []
         for sequence, orientations in preset.loops:
@@ -570,6 +605,7 @@ class KnotsApp(tk.Tk):
         self.focus_force()
 
     def _clear_cs_route(self):
+        self.loaded_layout = None  # cierra la vista del diagrama estándar cargado
         self.cs_loops = []
         self._cs_results = []
         self._rebuild_knot()
